@@ -29,6 +29,7 @@
             <div><strong>A / LEFT ARROW</strong><span>Steer left</span></div>
             <div><strong>D / RIGHT ARROW</strong><span>Steer right</span></div>
             <div><strong>S / DOWN ARROW</strong><span>Brake or decelerate</span></div>
+            <div><strong>SPACE</strong><span>Use one earned jump charge</span></div>
             <div><strong>R</strong><span>Restart after game over</span></div>
             <div><strong>ESC</strong><span>Return to the previous menu where supported</span></div>
           </section>
@@ -36,7 +37,7 @@
             <div>
               <h3>DIFFICULTIES</h3>
               <p><strong>EASY</strong> Four-lane road with same-direction traffic.</p>
-              <p><strong>HARD</strong> Three-lane road with one oncoming lane.</p>
+              <p><strong>HARD</strong> Four-lane tarmac with two same-direction lanes and two oncoming lanes.</p>
               <p><strong>REALISM</strong> Narrow two-lane tarmac with drivable dirt roads on both sides. Dirt reduces speed and makes steering unstable. Dirt-road traffic may travel in either direction.</p>
             </div>
             <div>
@@ -48,9 +49,7 @@
             <div>
               <h3>SUGARCANE</h3>
               <p>Collect sugarcane to upgrade the car.</p>
-              <p><strong>Easy:</strong> Tier 2: 10, Tier 3: 20, Tier 4: 30</p>
-              <p><strong>Hard:</strong> Tier 2: 10, Tier 3: 30, Tier 4: 50</p>
-              <p><strong>Realism:</strong> Tier 2: 10, Tier 3: 60, Tier 4: 160</p>
+              <p><strong>ALL DIFFICULTIES</strong> Tier 2: 10 sugarcanes, Tier 3: 20 sugarcanes, Tier 4: 30 sugarcanes</p>
             </div>
             <div>
               <h3>SPEED TIERS</h3>
@@ -59,6 +58,10 @@
               <p>Tier 3: 150 km/h</p>
               <p>Tier 4: 250 km/h</p>
             </div>
+          </section>
+          <section>
+            <h3>JUMP</h3>
+            <p>Every 25 sugarcanes earns one jump. Press SPACE during gameplay to jump over traffic, humans and cows. You cannot steer or collect sugarcane while airborne.</p>
           </section>
           <section>
             <h3>SCORING</h3>
@@ -77,7 +80,7 @@
           </button>
           <button class="difficulty-option" type="button" data-difficulty="hard">
             <strong>2 - HARD</strong>
-            <span>Three-lane tarmac. Includes oncoming traffic.</span>
+            <span>Four-lane tarmac with two same-direction lanes and two oncoming lanes.</span>
           </button>
           <button class="difficulty-option" type="button" data-difficulty="realism">
             <strong>3 - REALISM</strong>
@@ -94,6 +97,7 @@
         <div id="speedHud">Speed: 0 km/h</div>
         <div id="scoreHud">Score: 0</div>
         <div id="sugarcaneHud">Sugarcane: 0</div>
+        <div id="jumpHud">Jumps: 0</div>
       </div>
       <div id="gameOverMessage" class="game-over-message" hidden>
         <div>GAME OVER</div>

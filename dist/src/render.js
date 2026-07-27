@@ -10,10 +10,22 @@
   const TIER_3_RENDER_SCALE = 1.20;
   const TIER_4_WIDTH_MULTIPLIER = 1.18;
   const TIER_4_HEIGHT_MULTIPLIER = 0.78;
+  const SUGARCANE_RENDER_SCALE = 1.30;
   const HORIZON_RATIO = 0.29;
   const SEGMENT_COUNT = 26;
   const PLAYER_DEPTH = 0.88;
   const REALISM_SURFACE_HYSTERESIS_LANE_RATIO = 0.04;
+  const STANDING_COW_COLLISION_RATIO = {
+    width: 0.72,
+    height: 0.68,
+  };
+  const STANDING_COW_IDLE_POSES_PER_SECOND = 2;
+  const STANDING_COW_IDLE_POSES = [
+    { verticalOffsetRatio: 0, rotationDegrees: -0.2 },
+    { verticalOffsetRatio: -0.005, rotationDegrees: 0.2 },
+    { verticalOffsetRatio: 0, rotationDegrees: 0.2 },
+    { verticalOffsetRatio: -0.003, rotationDegrees: -0.2 },
+  ];
   const PLAYER_PROFILES = {
     tier1: {
       widthRatio: 0.1,
@@ -243,6 +255,9 @@
   const PLAYER_BRAKING_RATE_MULTIPLIER = 0.5;
   const PLAYER_BRAKING_VERTICAL_OFFSET_RATIO = 0.006;
   const PLAYER_BRAKING_ROTATION_DEGREES = 1;
+  const JUMP_PEAK_SCREEN_RATIO = 0.12;
+  const JUMP_HUD_SAFE_BOTTOM_RATIO = 0.24;
+  const JUMP_HUD_SAFE_MARGIN = 12;
   const ENVIRONMENT_SECTION_TYPES = [
     "dryField",
     "greenCrop",
@@ -268,6 +283,9 @@
     dirtRoadB: "#946231",
     dirtRut: "#744c2d",
     dirtEdge: "#c49258",
+    patchDirt: "#a9773d",
+    patchDirtDark: "#76502d",
+    patchDirtLight: "#bd8951",
   };
   const TERRAIN_COLORS = {
     dryA: "#b99657",
@@ -570,6 +588,20 @@
     return lerp(road.left, road.right, (laneIndex + 0.5) / laneCount);
   }
 
+  function roadRatioCenterAtDepth(width, height, depth, ratio, difficulty) {
+    const road = roadAtDepth(width, height, depth, difficulty);
+
+    return lerp(road.left, road.right, ratio);
+  }
+
+  function trafficCenterRatio(traffic, laneCount) {
+    if (traffic && Number.isFinite(traffic.logicalX)) {
+      return traffic.logicalX;
+    }
+
+    return (traffic.lane + 0.5) / laneCount;
+  }
+
   function playerProfile(tier) {
     return PLAYER_PROFILES[tier && tier.id] || PLAYER_PROFILES.tier1;
   }
@@ -590,7 +622,19 @@
     return { width: 1, height: 1 };
   }
 
-  function playerBounds(width, height, playerX, tier, difficulty) {
+  function playerJumpVerticalOffset(height, state, bounds) {
+    if (!state || !state.jumpArcAmount) {
+      return 0;
+    }
+
+    const normalBottomY = bounds.y + bounds.height;
+    const hudSafeBottomY = height * JUMP_HUD_SAFE_BOTTOM_RATIO + JUMP_HUD_SAFE_MARGIN;
+    const peakAnchorY = Math.max(height * JUMP_PEAK_SCREEN_RATIO, hudSafeBottomY);
+
+    return (peakAnchorY - normalBottomY) * state.jumpArcAmount;
+  }
+
+  function playerBounds(width, height, playerX, tier, difficulty, state) {
     const road = roadAtDepth(width, height, PLAYER_DEPTH, difficulty);
     const profile = playerProfile(tier);
     const multipliers = playerRenderMultipliers(tier);
@@ -602,12 +646,16 @@
     const baseCenterY = height * 0.79;
     const baseBottomY = baseCenterY + baseCarHeight * 0.5;
 
-    return {
+    const bounds = {
       x: x - carWidth * 0.5,
       y: baseBottomY - carHeight,
       width: carWidth,
       height: carHeight,
     };
+
+    bounds.y += playerJumpVerticalOffset(height, state, bounds);
+
+    return bounds;
   }
 
   function trafficSpriteBounds(width, height, traffic, centerX, difficulty) {
@@ -633,7 +681,7 @@
       width,
       height,
       traffic,
-      laneCenterAtDepth(width, height, traffic.lane, traffic.depth, laneCount, difficulty),
+      roadRatioCenterAtDepth(width, height, traffic.depth, trafficCenterRatio(traffic, laneCount), difficulty),
       difficulty
     );
   }
@@ -706,8 +754,11 @@
 
   function dirtTrafficBounds(width, height, traffic, difficulty) {
     const dirtRoad = dirtRoadAtDepth(width, height, traffic.depth, traffic.side, difficulty);
+    const centerX = Number.isFinite(traffic.logicalX)
+      ? roadRatioCenterAtDepth(width, height, traffic.depth, traffic.logicalX, difficulty)
+      : (dirtRoad.left + dirtRoad.right) * 0.5;
 
-    return trafficSpriteBounds(width, height, traffic, (dirtRoad.left + dirtRoad.right) * 0.5, difficulty);
+    return trafficSpriteBounds(width, height, traffic, centerX, difficulty);
   }
 
   function dirtTrafficCollisionBounds(width, height, traffic, difficulty) {
@@ -817,11 +868,38 @@
     };
   }
 
+  function standingCowBounds(width, height, cow, difficulty) {
+    const depth = cow.depth;
+    const road = roadAtDepth(width, height, depth, difficulty);
+    const profile = CROSSING_PROFILES.cow;
+    const cowWidth = Math.max(profile.minWidth, road.width * profile.widthRatio);
+    const cowHeight = cowWidth * profile.heightRatio;
+    const centerX = lerp(road.left, road.right, cow.position);
+    const y = road.y;
+
+    return {
+      x: centerX - cowWidth * 0.5,
+      y: y - cowHeight,
+      width: cowWidth,
+      height: cowHeight,
+    };
+  }
+
+  function standingCowCollisionBounds(width, height, cow, difficulty) {
+    return bottomCenteredBounds(
+      standingCowBounds(width, height, cow, difficulty),
+      STANDING_COW_COLLISION_RATIO.width,
+      STANDING_COW_COLLISION_RATIO.height
+    );
+  }
+
   function sugarcaneBounds(width, height, sugarcane, difficulty) {
     const depth = sugarcane.depth;
     const road = roadAtDepth(width, height, depth, difficulty);
-    const sugarcaneWidth = Math.max(SUGARCANE_PROFILE.minWidth, road.width * SUGARCANE_PROFILE.widthRatio);
-    const sugarcaneHeight = sugarcaneWidth * SUGARCANE_PROFILE.heightRatio;
+    const baseSugarcaneWidth = Math.max(SUGARCANE_PROFILE.minWidth, road.width * SUGARCANE_PROFILE.widthRatio);
+    const baseSugarcaneHeight = baseSugarcaneWidth * SUGARCANE_PROFILE.heightRatio;
+    const sugarcaneWidth = baseSugarcaneWidth * SUGARCANE_RENDER_SCALE;
+    const sugarcaneHeight = baseSugarcaneHeight * SUGARCANE_RENDER_SCALE;
     const centerX = lerp(road.left, road.right, sugarcane.position);
     const y = road.y;
 
@@ -927,7 +1005,8 @@
     }
   }
 
-  function drawRoad(ctx, width, height, scroll, difficulty) {
+  function drawRoad(ctx, width, height, scroll, state) {
+    const difficulty = state.difficulty;
     const laneCount = difficulty ? difficulty.laneCount : 4;
     const firstSegment = firstVisibleRoadSegment(scroll);
 
@@ -952,6 +1031,7 @@
       drawRoadSurfaceDetails(ctx, width, height, depths.nearDepth, depths.farDepth, segmentIndex, difficulty);
     }
 
+    drawDirtPatches(ctx, width, height, state);
     drawRoadEdges(ctx, width, height, difficulty);
     drawLaneLines(ctx, width, height, scroll, difficulty);
     drawRoadsideDecorations(ctx, width, height, scroll, difficulty);
@@ -990,6 +1070,69 @@
 
     drawSegmentSide(ctx, width, height, nearDepth, farDepth, "left", -0.03, 0, ROAD_COLORS.dust, difficulty);
     drawSegmentSide(ctx, width, height, nearDepth, farDepth, "right", -0.03, 0, ROAD_COLORS.dust, difficulty);
+  }
+
+  function dirtPatchLanePoint(width, height, depth, laneRatio, laneJitter, difficulty) {
+    const road = roadAtDepth(width, height, clamp(depth, 0, 1), difficulty);
+
+    return {
+      x: lerp(road.left, road.right, laneRatio) + road.width * laneJitter,
+      y: road.y,
+    };
+  }
+
+  function drawDirtPatchLane(ctx, width, height, patch, lane, laneCount, nearDepth, farDepth, difficulty) {
+    const leftRatio = lane / laneCount;
+    const rightRatio = (lane + 1) / laneCount;
+    const seed = patch.seed + lane * 17;
+    const nearLeftJitter = (deterministicRandom(seed, 101) - 0.5) * 0.012;
+    const nearRightJitter = (deterministicRandom(seed, 102) - 0.5) * 0.012;
+    const farLeftJitter = (deterministicRandom(seed, 103) - 0.5) * 0.01;
+    const farRightJitter = (deterministicRandom(seed, 104) - 0.5) * 0.01;
+    const color = deterministicRandom(seed, 105) > 0.35 ? ROAD_COLORS.patchDirt : ROAD_COLORS.patchDirtLight;
+
+    drawPolygon(ctx, [
+      dirtPatchLanePoint(width, height, farDepth, leftRatio, farLeftJitter, difficulty),
+      dirtPatchLanePoint(width, height, farDepth, rightRatio, farRightJitter, difficulty),
+      dirtPatchLanePoint(width, height, nearDepth, rightRatio, nearRightJitter, difficulty),
+      dirtPatchLanePoint(width, height, nearDepth, leftRatio, nearLeftJitter, difficulty),
+    ], color);
+
+    if (deterministicRandom(seed, 106) > 0.2) {
+      const rutA = lerp(leftRatio, rightRatio, 0.32);
+      const rutB = lerp(leftRatio, rightRatio, 0.68);
+      drawProjectedLaneMark(ctx, width, height, nearDepth, farDepth, rutA, 0.0025, ROAD_COLORS.patchDirtDark, difficulty);
+      drawProjectedLaneMark(ctx, width, height, nearDepth, farDepth, rutB, 0.0025, ROAD_COLORS.patchDirtDark, difficulty);
+    }
+
+    if (deterministicRandom(seed, 107) > 0.55) {
+      const compactRatio = lerp(leftRatio, rightRatio, 0.5 + (deterministicRandom(seed, 108) - 0.5) * 0.35);
+      drawProjectedLaneMark(ctx, width, height, nearDepth + 0.01, farDepth - 0.01, compactRatio, 0.018, ROAD_COLORS.patchDirtDark, difficulty);
+    }
+  }
+
+  function drawDirtPatches(ctx, width, height, state) {
+    const difficulty = state.difficulty;
+    const laneCount = difficulty ? difficulty.laneCount : 4;
+
+    if (!state.dirtPatches || state.dirtPatches.length === 0) {
+      return;
+    }
+
+    state.dirtPatches.forEach(function (patch) {
+      const nearDepth = clamp(1 - patch.distance, 0, 1);
+      const farDepth = clamp(1 - (patch.distance + patch.length), 0, 1);
+
+      if (nearDepth <= 0 || farDepth >= 1 || nearDepth <= farDepth) {
+        return;
+      }
+
+      patch.laneMask.forEach(function (covered, lane) {
+        if (covered) {
+          drawDirtPatchLane(ctx, width, height, patch, lane, laneCount, nearDepth, farDepth, difficulty);
+        }
+      });
+    });
   }
 
   function drawRoadEdges(ctx, width, height, difficulty) {
@@ -1313,7 +1456,7 @@
     const playerX = state.playerX;
     const tier = state.playerTier;
     const tierId = tier && tier.id ? tier.id : "tier1";
-    const bounds = playerBounds(width, height, playerX, tier, state.difficulty);
+    const bounds = playerBounds(width, height, playerX, tier, state.difficulty, state);
     const pose = playerVehiclePose(state, bounds);
 
     drawVehicleSprite(ctx, sprites["player." + tierId], bounds, pose, function (context, fallbackBounds) {
@@ -1447,6 +1590,22 @@
     }
   }
 
+  function standingCowPose(cow) {
+    return steppedPose(cow.animationTime || 0, STANDING_COW_IDLE_POSES_PER_SECOND, STANDING_COW_IDLE_POSES);
+  }
+
+  function drawStandingCow(ctx, width, height, cow, difficulty) {
+    if (!cow) {
+      return;
+    }
+
+    const bounds = standingCowBounds(width, height, cow, difficulty);
+    const pose = standingCowPose(cow);
+    const sprite = sprites["crossing.cow." + (cow.facing === "left" ? "left" : "right")];
+
+    drawCutoutSprite(ctx, sprite, bounds, pose, drawCow);
+  }
+
   function drawSugarcane(ctx, width, height, sugarcane, difficulty) {
     if (!sugarcane) {
       return;
@@ -1511,7 +1670,8 @@
     ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
   }
 
-  function drawGroundAndRoad(ctx, width, height, scroll, difficulty) {
+  function drawGroundAndRoad(ctx, width, height, scroll, state) {
+    const difficulty = state.difficulty;
     const horizonY = height * HORIZON_RATIO;
     const groundStartY = horizonY - 1;
 
@@ -1521,7 +1681,7 @@
     ctx.clip();
     drawGroundBase(ctx, width, height);
     drawHorizon(ctx, width, height);
-    drawRoad(ctx, width, height, scroll, difficulty);
+    drawRoad(ctx, width, height, scroll, state);
     ctx.restore();
   }
 
@@ -1580,6 +1740,22 @@
     drivingCorridor: function (canvas, state) {
       return drivingCorridorAtDepth(canvas.clientWidth, canvas.clientHeight, PLAYER_DEPTH, state.difficulty);
     },
+    standingCowXBounds: function (canvas, state, distance) {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      const depth = clamp(1 - distance, 0.03, 1.12);
+      const difficulty = state.difficulty;
+      const corridor = drivingCorridorAtDepth(width, height, depth, difficulty);
+      const road = corridor.road;
+      const profile = CROSSING_PROFILES.cow;
+      const cowWidth = Math.max(profile.minWidth, road.width * profile.widthRatio);
+      const halfCowRatio = cowWidth * 0.5 / road.width;
+
+      return {
+        min: (corridor.left - road.left) / road.width + halfCowRatio,
+        max: (corridor.right - road.left) / road.width - halfCowRatio,
+      };
+    },
     getBounds: function (canvas, state) {
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
@@ -1601,6 +1777,9 @@
         }),
         dirtTraffic: dirtTraffic,
         crossingObstacle: state.crossingObstacle ? crossingObstacleBounds(width, height, state.crossingObstacle, state.difficulty) : null,
+        standingCows: state.standingCows.map(function (cow) {
+          return standingCowCollisionBounds(width, height, cow, state.difficulty);
+        }),
         sugarcanes: state.sugarcanes.map(function (sugarcane) {
           return sugarcaneBounds(width, height, sugarcane, state.difficulty);
         }),
@@ -1612,11 +1791,14 @@
       const laneCount = state.difficulty ? state.difficulty.laneCount : 4;
 
       return {
-        player: playerBounds(width, height, state.playerX, state.playerTier, state.difficulty),
+        player: playerBounds(width, height, state.playerX, state.playerTier, state.difficulty, state),
         traffic: state.traffic.map(function (traffic) {
           return trafficBounds(width, height, traffic, laneCount, state.difficulty);
         }),
         crossingObstacle: state.crossingObstacle ? crossingObstacleBounds(width, height, state.crossingObstacle, state.difficulty) : null,
+        standingCows: state.standingCows.map(function (cow) {
+          return standingCowBounds(width, height, cow, state.difficulty);
+        }),
         sugarcanes: state.sugarcanes.map(function (sugarcane) {
           return sugarcaneBounds(width, height, sugarcane, state.difficulty);
         }),
@@ -1662,9 +1844,17 @@
         });
       }
 
+      state.standingCows.forEach(function (cow) {
+        renderItems.push({
+          type: "standingCow",
+          depth: cow.depth,
+          value: cow,
+        });
+      });
+
       renderItems.push({
         type: "player",
-        depth: PLAYER_DEPTH,
+        depth: state.jumpArcAmount > 0 ? 2 : PLAYER_DEPTH,
       });
 
       renderItems.sort(function (a, b) {
@@ -1674,7 +1864,7 @@
       resetCanvasTransform(ctx);
       ctx.imageSmoothingEnabled = false;
       drawBackground(ctx, width, height);
-      drawGroundAndRoad(ctx, width, height, state.roadScroll, state.difficulty);
+      drawGroundAndRoad(ctx, width, height, state.roadScroll, state);
       renderItems.forEach(function (item) {
         if (item.type === "traffic") {
           drawTrafficCar(ctx, width, height, item.value, laneCount, state.playerAnimationTime || 0, state.difficulty, false);
@@ -1684,6 +1874,8 @@
           drawSugarcane(ctx, width, height, item.value, state.difficulty);
         } else if (item.type === "crossingObstacle") {
           drawCrossingObstacle(ctx, width, height, item.value, state.difficulty);
+        } else if (item.type === "standingCow") {
+          drawStandingCow(ctx, width, height, item.value, state.difficulty);
         } else if (item.type === "player") {
           drawCar(ctx, width, height, state);
         }

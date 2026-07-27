@@ -11,6 +11,7 @@
   let menuDownRequested = false;
   let menuActivateRequested = false;
   let backRequested = false;
+  let jumpRequested = false;
   let debugToggleRequested = false;
   const handledKeys = new Set([
     "ArrowLeft",
@@ -65,6 +66,9 @@
         menuDownRequested = true;
       } else if (event.code === "Enter" || event.code === "Space") {
         menuActivateRequested = true;
+        if (event.code === "Space") {
+          jumpRequested = true;
+        }
       } else if (event.code === "Backspace") {
         backRequested = true;
       }
@@ -146,10 +150,16 @@
       selectionRequested = false;
       return requested;
     },
+    consumeJump: function () {
+      const requested = jumpRequested;
+      jumpRequested = false;
+      return requested;
+    },
     clearMenuRequests: function () {
       menuUpRequested = false;
       menuDownRequested = false;
       menuActivateRequested = false;
+      jumpRequested = false;
       backRequested = false;
       selectionRequested = false;
     },
