@@ -2,7 +2,7 @@
   "use strict";
 
   const PREVIOUS_MUSIC_GAIN = 0.35;
-  const MUSIC_VOLUME_MULTIPLIER = 3.0;
+  const MUSIC_VOLUME_MULTIPLIER = 6.0;
   const MUSIC_GAIN = PREVIOUS_MUSIC_GAIN * MUSIC_VOLUME_MULTIPLIER;
   const GAME_OVER_MUSIC_GAIN = MUSIC_GAIN * 0.70;
   const MUSIC_PATH = "assets/audio/gameplay-music.mp3";
@@ -53,9 +53,9 @@
     masterGain.connect(audioContext.destination);
 
     limiter = audioContext.createDynamicsCompressor();
-    limiter.threshold.value = -6;
-    limiter.knee.value = 2;
-    limiter.ratio.value = 12;
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.20;
     limiter.connect(masterGain);
