@@ -688,7 +688,6 @@
     state.dirtDriftCurrent = 0;
     state.dirtDriftTarget = 0;
     state.jumpWasAirborne = true;
-    audioEvent("jumpTakeoff");
 
     return true;
   }
@@ -721,7 +720,6 @@
       state.playerJumpLockedX = null;
       state.jumpWasAirborne = false;
       updatePlayerSurface();
-      audioEvent("jumpLand");
     }
   }
 
@@ -1096,7 +1094,6 @@
       unlockAudio();
       state.introSelectionIndex = index;
       updateIntroSelection();
-      audioEvent("menuConfirm");
       activateIntroSelection();
       window.RacingInput.clearMenuRequests();
       window.RacingInput.clearDifficultyRequests();
@@ -1109,7 +1106,6 @@
 
       if (DIFFICULTIES[difficultyId]) {
         unlockAudio();
-        audioEvent("menuConfirm");
         startDifficulty(difficultyId);
         window.RacingInput.clearMenuRequests();
         window.RacingInput.clearDifficultyRequests();
@@ -1119,7 +1115,6 @@
 
   instructionsBackButton.addEventListener("click", function () {
     unlockAudio();
-    audioEvent("menuBack");
     showIntro();
     window.RacingInput.clearMenuRequests();
     window.RacingInput.clearDifficultyRequests();
@@ -1304,10 +1299,6 @@
     const bounds = trafficRegionBounds(traffic);
     traffic.allowedCorridorLeft = bounds.left;
     traffic.allowedCorridorRight = bounds.right;
-    traffic.hornEligible = Math.random() < 0.24;
-    traffic.hornPlayed = false;
-    traffic.hornTimer = 0.8 + Math.random() * 1.7;
-    traffic.closePassPlayed = false;
   }
 
   function updateTrafficWeave(traffic, deltaSeconds) {
@@ -1333,32 +1324,6 @@
     traffic.weaveCurrentOffset = traffic.isDirtTraffic
       ? traffic.logicalX - ((bounds.left + bounds.right) * 0.5)
       : traffic.logicalX - laneCenterRatio(trafficCurrentLane(traffic), currentDifficulty().laneCount);
-  }
-
-  function updateTrafficAudio(traffic, deltaSeconds, previousDepth) {
-    if (state.screen !== SCREEN.gameplay || playerIsAirborne()) {
-      return;
-    }
-
-    if (traffic.hornEligible && !traffic.hornPlayed && traffic.depth > 0.22 && traffic.depth < 0.78) {
-      traffic.hornTimer -= deltaSeconds;
-      if (traffic.hornTimer <= 0) {
-        audioEvent("horn", { type: traffic.type });
-        traffic.hornPlayed = true;
-      }
-    }
-
-    if (
-      traffic.direction === "oncoming" &&
-      !traffic.closePassPlayed &&
-      previousDepth <= window.RacingRender.playerDepth &&
-      traffic.depth > window.RacingRender.playerDepth &&
-      Math.abs(trafficLogicalX(traffic) - state.playerX) > 0.06 &&
-      Math.abs(trafficLogicalX(traffic) - state.playerX) < trafficHalfWidthMargin(traffic) + 0.08
-    ) {
-      traffic.closePassPlayed = true;
-      audioEvent("closePass");
-    }
   }
 
   function chooseTrafficLane() {
@@ -1414,13 +1379,11 @@
 
     state.traffic.forEach(function (traffic) {
       const relativeWorldSpeed = effectiveTrafficRelativeWorldSpeed(traffic.direction);
-      const previousDepth = traffic.depth;
 
       traffic.distance -= relativeWorldSpeed * deltaSeconds;
       traffic.distance = Math.min(TRAFFIC_SPAWN_DISTANCE, traffic.distance);
       traffic.depth = clamp(1 - traffic.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
       updateTrafficWeave(traffic, deltaSeconds);
-      updateTrafficAudio(traffic, deltaSeconds, previousDepth);
 
       if (traffic.depth > window.RacingRender.playerDepth) {
         traffic.collidable = false;
@@ -1489,13 +1452,11 @@
         ? DIRT_TRAFFIC_CONFIG.oncomingSpeedMultiplier
         : DIRT_TRAFFIC_CONFIG.sameDirectionSpeedMultiplier;
       const relativeWorldSpeed = effectiveTrafficRelativeWorldSpeed(traffic.direction) * speedMultiplier;
-      const previousDepth = traffic.depth;
 
       traffic.distance -= relativeWorldSpeed * deltaSeconds;
       traffic.distance = Math.min(TRAFFIC_SPAWN_DISTANCE, traffic.distance);
       traffic.depth = clamp(1 - traffic.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
       updateTrafficWeave(traffic, deltaSeconds);
-      updateTrafficAudio(traffic, deltaSeconds, previousDepth);
 
       if (traffic.depth > window.RacingRender.playerDepth) {
         traffic.collidable = false;
@@ -2031,12 +1992,6 @@
     return a.x < b.x + b.width && a.x + a.width > b.x;
   }
 
-  function audioEvent(name, detail) {
-    if (window.RacingAudio && typeof window.RacingAudio.play === "function") {
-      window.RacingAudio.play(name, detail || {});
-    }
-  }
-
   function unlockAudio() {
     if (window.RacingAudio && typeof window.RacingAudio.unlock === "function") {
       window.RacingAudio.unlock();
@@ -2055,7 +2010,6 @@
     state.crossingSpawnTimer = crossingSpawnDelay();
     state.humanMessage.text = HUMAN_MESSAGE;
     state.humanMessage.timer = HUMAN_MESSAGE_DURATION;
-    audioEvent("humanImpact");
   }
 
   function checkCollision() {
@@ -2099,7 +2053,6 @@
 
     if (hitCrossingObstacle && state.crossingObstacle && state.crossingObstacle.type === "human") {
       if (currentHumanTierRule().lethal) {
-        audioEvent("vehicleCollision");
         showGameOver();
       } else {
         resolveNonLethalHumanCollision();
@@ -2109,25 +2062,21 @@
     }
 
     if (hitCrossingObstacle && state.crossingObstacle && state.crossingObstacle.type === "cow") {
-      audioEvent("cowCollision");
       showGameOver();
       return;
     }
 
     if (hitTapri) {
-      audioEvent("tapriCollision");
       showGameOver();
       return;
     }
 
     if (hitStandingCow) {
-      audioEvent("cowCollision");
       showGameOver();
       return;
     }
 
     if (hitTraffic || hitDirtTraffic) {
-      audioEvent("vehicleCollision");
       showGameOver();
     }
   }
@@ -2154,18 +2103,8 @@
         return;
       }
 
-      const previousTier = state.playerTier;
-      const previousJumpCharges = earnedJumpCharges();
-
       state.sugarcaneCount += 1;
       updatePlayerTier();
-      audioEvent("sugarcane");
-      if (state.playerTier !== previousTier) {
-        audioEvent("tierUp");
-      }
-      if (earnedJumpCharges() > previousJumpCharges) {
-        audioEvent("jumpCharge");
-      }
       state.liveScore = calculateLiveScore();
     });
 
@@ -2194,18 +2133,15 @@
       if (input.consumeMenuUp()) {
         state.introSelectionIndex = (state.introSelectionIndex + introOptionButtons.length - 1) % introOptionButtons.length;
         updateIntroSelection();
-        audioEvent("menuMove");
       }
 
       if (input.consumeMenuDown()) {
         state.introSelectionIndex = (state.introSelectionIndex + 1) % introOptionButtons.length;
         updateIntroSelection();
-        audioEvent("menuMove");
       }
 
       if (input.consumeMenuActivate()) {
         unlockAudio();
-        audioEvent("menuConfirm");
         activateIntroSelection();
         input.clearMenuRequests();
         input.clearDifficultyRequests();
@@ -2224,7 +2160,6 @@
       input.consumeMenuActivate();
 
       if (input.consumeBack()) {
-        audioEvent("menuBack");
         showIntro();
         input.clearMenuRequests();
         input.clearDifficultyRequests();
@@ -2244,11 +2179,9 @@
 
       if (selectedDifficulty) {
         unlockAudio();
-        audioEvent("menuConfirm");
         startDifficulty(selectedDifficulty);
         input.clearMenuRequests();
       } else if (input.consumeBack()) {
-        audioEvent("menuBack");
         showIntro();
         input.clearDifficultyRequests();
       }
@@ -2267,11 +2200,9 @@
       input.consumeBack();
 
       if (input.consumeRestart() || (restartIsDown && !state.restartWasDown)) {
-        audioEvent("menuConfirm");
         resetRun(false);
         input.clearMenuRequests();
       } else if (selectionRequested) {
-        audioEvent("menuBack");
         showDifficultySelection();
         input.clearDifficultyRequests();
       }
@@ -2344,13 +2275,6 @@
     updateHumanMessage(deltaSeconds);
     checkSugarcaneCollection();
     updateScore(deltaSeconds, braking);
-    if (window.RacingAudio && typeof window.RacingAudio.update === "function") {
-      window.RacingAudio.update(state, {
-        braking: braking,
-        airborne: playerIsAirborne(),
-        deltaSeconds: deltaSeconds,
-      });
-    }
     checkCollision();
   }
 
