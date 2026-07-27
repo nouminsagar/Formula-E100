@@ -1,0 +1,25 @@
+India Highway Racer Beta
+
+Recommended delivery:
+Upload the contents of the dist folder, or upload india-highway-racer-beta.zip, to a static web host.
+
+Send testers the resulting web URL.
+
+Testers should use a desktop browser.
+
+Controls:
+A or Left Arrow: steer left
+D or Right Arrow: steer right
+S or Down Arrow: brake
+R: restart after game over
+Escape: return to difficulty selection after game over
+
+Difficulty selection:
+1: Easy
+2: Hard
+3: Realism
+
+The game is not intended for mobile play.
+
+Direct file opening:
+Opening dist/index.html directly should work in current desktop browsers because the game uses plain scripts and relative asset paths. A hosted static URL remains the recommended beta delivery method.

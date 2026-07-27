@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FORMULA E100</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="game-shell" aria-label="FORMULA E100 browser racing game">
+      <canvas id="gameCanvas" width="960" height="540"></canvas>
+      <div id="introScreen" class="menu-screen intro-screen">
+        <h1 class="game-title">FORMULA E100</h1>
+        <div class="menu-options" role="menu" aria-label="Main menu">
+          <button class="menu-option is-selected" type="button" data-intro-option="play">PLAY GAME</button>
+          <button class="menu-option" type="button" data-intro-option="instructions">INSTRUCTIONS</button>
+        </div>
+      </div>
+      <div id="instructionsScreen" class="menu-screen instructions-screen" hidden>
+        <div class="instructions-panel">
+          <h2>HOW TO PLAY</h2>
+          <section>
+            <h3>OBJECTIVE</h3>
+            <p>Drive as far as possible, avoid obstacles, collect sugarcane, upgrade the car and achieve the highest score.</p>
+          </section>
+          <section class="instructions-grid">
+            <h3>CONTROLS</h3>
+            <div><strong>A / LEFT ARROW</strong><span>Steer left</span></div>
+            <div><strong>D / RIGHT ARROW</strong><span>Steer right</span></div>
+            <div><strong>S / DOWN ARROW</strong><span>Brake or decelerate</span></div>
+            <div><strong>R</strong><span>Restart after game over</span></div>
+            <div><strong>ESC</strong><span>Return to the previous menu where supported</span></div>
+          </section>
+          <section class="instructions-columns">
+            <div>
+              <h3>DIFFICULTIES</h3>
+              <p><strong>EASY</strong> Four-lane road with same-direction traffic.</p>
+              <p><strong>HARD</strong> Three-lane road with one oncoming lane.</p>
+              <p><strong>REALISM</strong> Narrow two-lane tarmac with drivable dirt roads on both sides. Dirt reduces speed and makes steering unstable. Dirt-road traffic may travel in either direction.</p>
+            </div>
+            <div>
+              <h3>OBSTACLES</h3>
+              <p>Avoid cars, rickshaws, trucks, humans and cows. Touching a gameplay obstacle causes immediate game over.</p>
+            </div>
+          </section>
+          <section class="instructions-columns">
+            <div>
+              <h3>SUGARCANE</h3>
+              <p>Collect sugarcane to upgrade the car.</p>
+              <p><strong>Easy:</strong> Tier 2: 10, Tier 3: 20, Tier 4: 30</p>
+              <p><strong>Hard:</strong> Tier 2: 10, Tier 3: 30, Tier 4: 50</p>
+              <p><strong>Realism:</strong> Tier 2: 10, Tier 3: 60, Tier 4: 160</p>
+            </div>
+            <div>
+              <h3>SPEED TIERS</h3>
+              <p>Tier 1: 80 km/h</p>
+              <p>Tier 2: 100 km/h</p>
+              <p>Tier 3: 150 km/h</p>
+              <p>Tier 4: 250 km/h</p>
+            </div>
+          </section>
+          <section>
+            <h3>SCORING</h3>
+            <p>Score increases through distance travelled, sugarcane collected and time maintained at maximum tier speed.</p>
+          </section>
+          <div class="back-help">ESC / BACKSPACE</div>
+          <button id="instructionsBackButton" class="menu-option back-option" type="button">BACK</button>
+        </div>
+      </div>
+      <div id="difficultyScreen" class="menu-screen difficulty-screen" hidden>
+        <h2>SELECT DIFFICULTY</h2>
+        <div class="difficulty-options">
+          <button class="difficulty-option" type="button" data-difficulty="easy">
+            <strong>1 - EASY</strong>
+            <span>Four-lane tarmac. Same-direction traffic.</span>
+          </button>
+          <button class="difficulty-option" type="button" data-difficulty="hard">
+            <strong>2 - HARD</strong>
+            <span>Three-lane tarmac. Includes oncoming traffic.</span>
+          </button>
+          <button class="difficulty-option" type="button" data-difficulty="realism">
+            <strong>3 - REALISM</strong>
+            <span>Narrow two-lane tarmac with drivable dirt roads. Dirt reduces speed and makes steering unstable.</span>
+          </button>
+        </div>
+        <div class="menu-help">
+          <div>1: EASY&nbsp;&nbsp; 2: HARD&nbsp;&nbsp; 3: REALISM</div>
+          <div>PRESS THE NUMBER KEY TO START</div>
+          <div>ESC &mdash; BACK</div>
+        </div>
+      </div>
+      <div id="gameHud" class="game-hud" aria-live="polite" hidden>
+        <div id="speedHud">Speed: 0 km/h</div>
+        <div id="scoreHud">Score: 0</div>
+        <div id="sugarcaneHud">Sugarcane: 0</div>
+      </div>
+      <div id="gameOverMessage" class="game-over-message" hidden>
+        <div>GAME OVER</div>
+        <div id="finalScoreMessage">Final score: 0</div>
+        <div>Press R to restart</div>
+        <div>Press Esc for difficulty selection</div>
+      </div>
+    </main>
+
+    <script src="src/input.js"></script>
+    <script src="src/render.js"></script>
+    <script src="src/game.js"></script>
+  </body>
+</html>
