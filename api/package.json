@@ -1,0 +1,15 @@
+{
+  "name": "formula-e100-leaderboard-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node --test",
+    "check": "node --check src/index.js && node --check src/config.js && node --check src/cors.js && node --check src/validation.js && node --check src/rateLimit.js && node --check src/leaderboard.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

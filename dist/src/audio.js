@@ -4,7 +4,8 @@
   const AUDIO_CONFIG = {
     musicGain: 0.35,
     gameOverMusicGain: 0.055,
-    engineGain: 0.20,
+    engineGain: 0,
+    sugarcanePickupGain: 0,
     dirtGain: 0.16,
     windGain: 0.16,
     sfxGain: 0.50,
@@ -17,11 +18,16 @@
     },
     muteStorageKey: "formulaE100Muted",
   };
+  AUDIO_CONFIG.engineGain = AUDIO_CONFIG.musicGain * 0.10;
+  AUDIO_CONFIG.sugarcanePickupGain = AUDIO_CONFIG.musicGain * 0.10;
 
   const MUSIC_PATH = "assets/audio/gameplay-music.mp3";
-  const ENGINE_MIN_HZ = 65;
-  const ENGINE_MAX_HZ = 185;
+  const ENGINE_MIN_HZ = 50;
+  const ENGINE_MAX_HZ = 100;
+  const ENGINE_HARMONIC_MAX_HZ = 200;
+  const ENGINE_FILTER_CUTOFF_HZ = 240;
   const oneShotCooldowns = {
+    sugarcane: 0.06,
     humanImpact: 0.2,
     cowCollision: 0.3,
     menuMove: 0.08,
@@ -41,6 +47,7 @@
   let musicSourceNode = null;
   let engineOscillator = null;
   let engineHarmonic = null;
+  let engineFilter = null;
   let dirtSource = null;
   let windSource = null;
   let brakeSource = null;
@@ -136,19 +143,29 @@
 
   function createContinuousLayers() {
     engineOscillator = audioContext.createOscillator();
-    engineOscillator.type = "sawtooth";
+    const fundamentalGain = audioContext.createGain();
+    engineOscillator.type = "sine";
     engineOscillator.frequency.value = ENGINE_MIN_HZ;
-    engineOscillator.connect(engineGain);
+    fundamentalGain.gain.value = 0.75;
+
+    engineFilter = audioContext.createBiquadFilter();
+    engineFilter.type = "lowpass";
+    engineFilter.frequency.value = ENGINE_FILTER_CUTOFF_HZ;
+    engineFilter.Q.value = 0.45;
+
+    engineOscillator.connect(fundamentalGain);
+    fundamentalGain.connect(engineFilter);
     engineOscillator.start();
 
     engineHarmonic = audioContext.createOscillator();
     const harmonicGain = audioContext.createGain();
-    engineHarmonic.type = "square";
+    engineHarmonic.type = "triangle";
     engineHarmonic.frequency.value = ENGINE_MIN_HZ * 2;
-    harmonicGain.gain.value = 0.22;
+    harmonicGain.gain.value = 0.15;
     engineHarmonic.connect(harmonicGain);
-    harmonicGain.connect(engineGain);
+    harmonicGain.connect(engineFilter);
     engineHarmonic.start();
+    engineFilter.connect(engineGain);
 
     dirtSource = audioContext.createBufferSource();
     const dirtFilter = audioContext.createBiquadFilter();
@@ -379,7 +396,8 @@
     }
 
     if (name === "sugarcane") {
-      tone(sfxGain, "square", 640, 1180, 0.12, 0.08);
+      tone(sfxGain, "sine", 90, 135, AUDIO_CONFIG.sugarcanePickupGain, 0.12);
+      tone(sfxGain, "triangle", 170, 160, AUDIO_CONFIG.sugarcanePickupGain * 0.22, 0.10);
     } else if (name === "tierUp") {
       arpeggio([440, 660, 880], sfxGain, 0.14, 0.09);
     } else if (name === "jumpCharge") {
@@ -448,8 +466,9 @@
       return;
     }
 
-    engineOscillator.frequency.setTargetAtTime(ENGINE_MIN_HZ + (ENGINE_MAX_HZ - ENGINE_MIN_HZ) * speedRatio, audioContext.currentTime, 0.08);
-    engineHarmonic.frequency.setTargetAtTime((ENGINE_MIN_HZ + (ENGINE_MAX_HZ - ENGINE_MIN_HZ) * speedRatio) * 2, audioContext.currentTime, 0.08);
+    const engineFundamental = ENGINE_MIN_HZ + (ENGINE_MAX_HZ - ENGINE_MIN_HZ) * speedRatio;
+    engineOscillator.frequency.setTargetAtTime(engineFundamental, audioContext.currentTime, 0.10);
+    engineHarmonic.frequency.setTargetAtTime(Math.min(ENGINE_HARMONIC_MAX_HZ, engineFundamental * 2), audioContext.currentTime, 0.10);
     setGain(engineGain, AUDIO_CONFIG.engineGain * (0.35 + speedRatio * 0.65), 0.10);
     setGain(dirtGain, onDirt ? AUDIO_CONFIG.dirtGain * (0.4 + speedRatio * 0.6) : 0, 0.08);
     setGain(windGain, AUDIO_CONFIG.windGain * windAmount * 0.9, 0.12);

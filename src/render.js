@@ -16,11 +16,12 @@
   const PLAYER_DEPTH = 0.88;
   const REALISM_SURFACE_HYSTERESIS_LANE_RATIO = 0.04;
   const TAPRI_SOURCE_CROP = {
-    x: 2,
+    x: 25,
     y: 0,
-    width: 803,
+    width: 779,
     height: 609,
   };
+  const TAPRI_VISIBLE_ASPECT_RATIO = TAPRI_SOURCE_CROP.width / TAPRI_SOURCE_CROP.height;
   const TAPRI_RENDER_LANE_WIDTH_RATIO = 1.05;
   const TAPRI_COLLISION_RATIO = {
     width: 0.88,
@@ -671,6 +672,10 @@
     return bounds;
   }
 
+  function playerRenderedHeight(width, height, tier, difficulty) {
+    return playerBounds(width, height, 0.5, tier, difficulty).height;
+  }
+
   function trafficSpriteBounds(width, height, traffic, centerX, difficulty) {
     const depth = traffic.depth;
     const road = roadAtDepth(width, height, depth, difficulty);
@@ -789,10 +794,15 @@
     };
   }
 
-  function tapriBounds(width, height, tapri, difficulty) {
+  function tapriBounds(width, height, tapri, difficulty, state) {
     const edge = tapriRoadEdge(width, height, tapri, difficulty);
-    const tapriWidth = edge.laneWidth * TAPRI_RENDER_LANE_WIDTH_RATIO * (tapri.scale || 1);
-    const tapriHeight = tapriWidth * (TAPRI_SOURCE_CROP.height / TAPRI_SOURCE_CROP.width);
+    const projectedTapriWidth = edge.laneWidth * TAPRI_RENDER_LANE_WIDTH_RATIO * (tapri.scale || 1);
+    const projectedTapriHeight = projectedTapriWidth / TAPRI_VISIBLE_ASPECT_RATIO;
+    const maximumTapriHeight = state
+      ? playerRenderedHeight(width, height, state.playerTier, difficulty)
+      : projectedTapriHeight;
+    const tapriHeight = Math.min(projectedTapriHeight, maximumTapriHeight);
+    const tapriWidth = tapriHeight * TAPRI_VISIBLE_ASPECT_RATIO;
     const hitWidth = tapriWidth * TAPRI_COLLISION_RATIO.width;
     const intrusion = hitWidth * (tapri.intrusion || 0.32);
     let hitX;
@@ -811,9 +821,9 @@
     };
   }
 
-  function tapriCollisionBounds(width, height, tapri, difficulty) {
+  function tapriCollisionBounds(width, height, tapri, difficulty, state) {
     return bottomCenteredBounds(
-      tapriBounds(width, height, tapri, difficulty),
+      tapriBounds(width, height, tapri, difficulty, state),
       TAPRI_COLLISION_RATIO.width,
       TAPRI_COLLISION_RATIO.height
     );
@@ -1709,12 +1719,12 @@
     }
   }
 
-  function drawTapri(ctx, width, height, tapri, difficulty) {
+  function drawTapri(ctx, width, height, tapri, difficulty, state) {
     if (!tapri) {
       return;
     }
 
-    const bounds = tapriBounds(width, height, tapri, difficulty);
+    const bounds = tapriBounds(width, height, tapri, difficulty, state);
     const sprite = sprites.tapri;
 
     if (!spriteIsReady(sprite)) {
@@ -1846,7 +1856,7 @@
       ctx.restore();
     });
     state.tapris.forEach(function (tapri) {
-      drawDebugRect(ctx, tapriCollisionBounds(width, height, tapri, state.difficulty), "#ff9c2a");
+      drawDebugRect(ctx, tapriCollisionBounds(width, height, tapri, state.difficulty, state), "#ff9c2a");
     });
   }
 
@@ -1974,7 +1984,7 @@
           return sugarcaneBounds(width, height, sugarcane, state.difficulty);
         }),
         tapris: state.tapris.map(function (tapri) {
-          return tapriCollisionBounds(width, height, tapri, state.difficulty);
+          return tapriCollisionBounds(width, height, tapri, state.difficulty, state);
         }),
       };
     },
@@ -1996,7 +2006,7 @@
           return sugarcaneBounds(width, height, sugarcane, state.difficulty);
         }),
         tapris: state.tapris.map(function (tapri) {
-          return tapriBounds(width, height, tapri, state.difficulty);
+          return tapriBounds(width, height, tapri, state.difficulty, state);
         }),
       };
     },
@@ -2081,7 +2091,7 @@
         } else if (item.type === "standingCow") {
           drawStandingCow(ctx, width, height, item.value, state.difficulty);
         } else if (item.type === "tapri") {
-          drawTapri(ctx, width, height, item.value, state.difficulty);
+          drawTapri(ctx, width, height, item.value, state.difficulty, state);
         } else if (item.type === "player") {
           drawCar(ctx, width, height, state);
         }
