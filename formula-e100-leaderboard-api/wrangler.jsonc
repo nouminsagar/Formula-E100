@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "formula-e100-leaderboard-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-27",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    // Replace the placeholder with the exact GitHub Pages origin before deployment.
+    // Example local values are included explicitly for Wrangler dev.
+    "ALLOWED_ORIGINS": "__REPLACE_WITH_FORMULA_E100_GITHUB_PAGES_ORIGIN__,http://localhost:5173,http://127.0.0.1:5173,http://localhost:8787,http://127.0.0.1:8787"
+  },
+  "secrets": {
+    "required": [
+      "IP_HASH_SALT"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "formula-e100-leaderboard",
+      "database_id": "9c40819d-ea3d-4b89-8fcf-7d6e3641f407"
+    }
+  ]
+}

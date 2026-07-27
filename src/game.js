@@ -8,6 +8,7 @@
   const scoreHud = document.getElementById("scoreHud");
   const sugarcaneHud = document.getElementById("sugarcaneHud");
   const jumpHud = document.getElementById("jumpHud");
+  const soundHud = document.getElementById("soundHud");
   const gameOverMessage = document.getElementById("gameOverMessage");
   const finalScoreMessage = document.getElementById("finalScoreMessage");
   const introScreen = document.getElementById("introScreen");
@@ -223,6 +224,57 @@
     crossingPositionGap: 0.18,
     playerDistanceGap: 0.34,
   };
+  const TAPRI_CONFIG = {
+    maxActive: 2,
+    spawnDelayRange: {
+      min: 4,
+      max: 8,
+    },
+    retryDelayRange: {
+      min: 0.5,
+      max: 1,
+    },
+    spawnDistanceRange: {
+      min: 0.72,
+      max: 0.86,
+    },
+    removeDistance: -0.12,
+    intrusionRange: {
+      min: 0.25,
+      max: 0.40,
+    },
+    scaleRange: {
+      min: 0.92,
+      max: 1.08,
+    },
+    minReactionSeconds: 2.5,
+    minLongitudinalGap: 0.24,
+    trafficDistanceGap: 0.16,
+    trafficEdgePositionGap: 0.18,
+    standingCowDistanceGap: 0.16,
+    standingCowPositionGap: 0.22,
+    crossingDistanceGap: 0.16,
+    crossingEdgePositionGap: 0.24,
+    openCorridorMargin: 0.08,
+  };
+  const HUMAN_MESSAGE = "Chill bro! It was your driver, not you.";
+  const HUMAN_MESSAGE_DURATION = 2.75;
+  const HUMAN_TIER_RULES = {
+    1: {
+      lethal: true,
+    },
+    2: {
+      lethal: false,
+      speedMultiplier: 0.80,
+    },
+    3: {
+      lethal: true,
+    },
+    4: {
+      lethal: false,
+      speedMultiplier: 0.80,
+    },
+  };
   const PLAYER_SURFACES = {
     tarmac: "tarmac",
     leftDirt: "leftDirt",
@@ -341,6 +393,13 @@
     standingCows: [],
     standingCowSpawnTimer: STANDING_COW_CONFIG.spawnDelayRange.max,
     nextStandingCowId: 1,
+    tapris: [],
+    tapriSpawnTimer: TAPRI_CONFIG.spawnDelayRange.max,
+    nextTapriId: 1,
+    humanMessage: {
+      text: HUMAN_MESSAGE,
+      timer: 0,
+    },
     dirtPatches: [],
     dirtPatchSpawnTimer: DIRT_PATCH_CONFIG.spawnDelayRange.max,
     nextDirtPatchId: 1,
@@ -353,6 +412,7 @@
     jumpElapsed: 0,
     jumpArcAmount: 0,
     playerJumpLockedX: null,
+    jumpWasAirborne: false,
     fullSpeedScore: 0,
     liveScore: 0,
     finalScore: 0,
@@ -601,6 +661,7 @@
     state.jumpElapsed = 0;
     state.jumpArcAmount = 0;
     state.playerJumpLockedX = null;
+    state.jumpWasAirborne = false;
   }
 
   function easeOutCubic(amount) {
@@ -626,6 +687,8 @@
     state.playerSteeringPose = 0;
     state.dirtDriftCurrent = 0;
     state.dirtDriftTarget = 0;
+    state.jumpWasAirborne = true;
+    audioEvent("jumpTakeoff");
 
     return true;
   }
@@ -656,7 +719,9 @@
       state.jumpElapsed = 0;
       state.jumpArcAmount = 0;
       state.playerJumpLockedX = null;
+      state.jumpWasAirborne = false;
       updatePlayerSurface();
+      audioEvent("jumpLand");
     }
   }
 
@@ -865,15 +930,22 @@
     };
   }
 
+  function resetHumanMessage() {
+    state.humanMessage.text = HUMAN_MESSAGE;
+    state.humanMessage.timer = 0;
+  }
+
   function clearTransientRunState() {
     state.traffic = [];
     resetDirtTraffic();
     resetDirtPatches();
     resetStandingCows();
+    resetTapris();
     state.crossingObstacle = null;
     state.sugarcanes = [];
     resetDirtDrivingState();
     resetJumpState();
+    resetHumanMessage();
   }
 
   function updateIntroSelection() {
@@ -899,6 +971,9 @@
     gameOverMessage.hidden = true;
     introScreen.hidden = false;
     updateIntroSelection();
+    if (window.RacingAudio) {
+      window.RacingAudio.setScreen(SCREEN.intro);
+    }
   }
 
   function showInstructions() {
@@ -910,6 +985,9 @@
     gameHud.hidden = true;
     gameOverMessage.hidden = true;
     instructionsScreen.hidden = false;
+    if (window.RacingAudio) {
+      window.RacingAudio.setScreen(SCREEN.instructions);
+    }
   }
 
   function showDifficultySelection() {
@@ -921,13 +999,19 @@
     gameHud.hidden = true;
     gameOverMessage.hidden = true;
     difficultyScreen.hidden = false;
+    if (window.RacingAudio) {
+      window.RacingAudio.setScreen(SCREEN.difficulty);
+    }
   }
 
-  function showGameplay() {
+  function showGameplay(restartTrack) {
     state.screen = SCREEN.gameplay;
     hideMenuScreens();
     gameHud.hidden = false;
     gameOverMessage.hidden = true;
+    if (window.RacingAudio) {
+      window.RacingAudio.setScreen(SCREEN.gameplay, { restartTrack: !!restartTrack });
+    }
   }
 
   function showGameOver() {
@@ -941,6 +1025,9 @@
     finalScoreMessage.textContent = "Final score: " + state.finalScore;
     gameHud.hidden = true;
     gameOverMessage.hidden = false;
+    if (window.RacingAudio) {
+      window.RacingAudio.setScreen(SCREEN.gameOver);
+    }
   }
 
   function activateIntroSelection() {
@@ -954,7 +1041,7 @@
     }
   }
 
-  function resetRun() {
+  function resetRun(restartTrack) {
     state.speed = 0;
     state.playerX = 0.5;
     state.playerTier = PLAYER_TIERS[0];
@@ -971,6 +1058,8 @@
     state.crossingObstacle = null;
     state.crossingSpawnTimer = crossingSpawnDelay();
     resetStandingCows();
+    resetTapris();
+    resetHumanMessage();
     state.sugarcanes = [];
     state.sugarcaneSpawnAccumulator = 0;
     state.distanceMetres = 0;
@@ -992,20 +1081,22 @@
     state.debugHitboxes = false;
     state.restartWasDown = false;
     state.lastTime = performance.now();
-    showGameplay();
+    showGameplay(restartTrack);
     finalScoreMessage.textContent = "Final score: 0";
     updateHud();
   }
 
   function startDifficulty(difficultyId) {
     state.difficulty = DIFFICULTIES[difficultyId];
-    resetRun();
+    resetRun(true);
   }
 
   introOptionButtons.forEach(function (button, index) {
     button.addEventListener("click", function () {
+      unlockAudio();
       state.introSelectionIndex = index;
       updateIntroSelection();
+      audioEvent("menuConfirm");
       activateIntroSelection();
       window.RacingInput.clearMenuRequests();
       window.RacingInput.clearDifficultyRequests();
@@ -1017,6 +1108,8 @@
       const difficultyId = button.getAttribute("data-difficulty");
 
       if (DIFFICULTIES[difficultyId]) {
+        unlockAudio();
+        audioEvent("menuConfirm");
         startDifficulty(difficultyId);
         window.RacingInput.clearMenuRequests();
         window.RacingInput.clearDifficultyRequests();
@@ -1025,6 +1118,8 @@
   });
 
   instructionsBackButton.addEventListener("click", function () {
+    unlockAudio();
+    audioEvent("menuBack");
     showIntro();
     window.RacingInput.clearMenuRequests();
     window.RacingInput.clearDifficultyRequests();
@@ -1209,6 +1304,10 @@
     const bounds = trafficRegionBounds(traffic);
     traffic.allowedCorridorLeft = bounds.left;
     traffic.allowedCorridorRight = bounds.right;
+    traffic.hornEligible = Math.random() < 0.24;
+    traffic.hornPlayed = false;
+    traffic.hornTimer = 0.8 + Math.random() * 1.7;
+    traffic.closePassPlayed = false;
   }
 
   function updateTrafficWeave(traffic, deltaSeconds) {
@@ -1234,6 +1333,32 @@
     traffic.weaveCurrentOffset = traffic.isDirtTraffic
       ? traffic.logicalX - ((bounds.left + bounds.right) * 0.5)
       : traffic.logicalX - laneCenterRatio(trafficCurrentLane(traffic), currentDifficulty().laneCount);
+  }
+
+  function updateTrafficAudio(traffic, deltaSeconds, previousDepth) {
+    if (state.screen !== SCREEN.gameplay || playerIsAirborne()) {
+      return;
+    }
+
+    if (traffic.hornEligible && !traffic.hornPlayed && traffic.depth > 0.22 && traffic.depth < 0.78) {
+      traffic.hornTimer -= deltaSeconds;
+      if (traffic.hornTimer <= 0) {
+        audioEvent("horn", { type: traffic.type });
+        traffic.hornPlayed = true;
+      }
+    }
+
+    if (
+      traffic.direction === "oncoming" &&
+      !traffic.closePassPlayed &&
+      previousDepth <= window.RacingRender.playerDepth &&
+      traffic.depth > window.RacingRender.playerDepth &&
+      Math.abs(trafficLogicalX(traffic) - state.playerX) > 0.06 &&
+      Math.abs(trafficLogicalX(traffic) - state.playerX) < trafficHalfWidthMargin(traffic) + 0.08
+    ) {
+      traffic.closePassPlayed = true;
+      audioEvent("closePass");
+    }
   }
 
   function chooseTrafficLane() {
@@ -1289,11 +1414,13 @@
 
     state.traffic.forEach(function (traffic) {
       const relativeWorldSpeed = effectiveTrafficRelativeWorldSpeed(traffic.direction);
+      const previousDepth = traffic.depth;
 
       traffic.distance -= relativeWorldSpeed * deltaSeconds;
       traffic.distance = Math.min(TRAFFIC_SPAWN_DISTANCE, traffic.distance);
       traffic.depth = clamp(1 - traffic.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
       updateTrafficWeave(traffic, deltaSeconds);
+      updateTrafficAudio(traffic, deltaSeconds, previousDepth);
 
       if (traffic.depth > window.RacingRender.playerDepth) {
         traffic.collidable = false;
@@ -1362,11 +1489,13 @@
         ? DIRT_TRAFFIC_CONFIG.oncomingSpeedMultiplier
         : DIRT_TRAFFIC_CONFIG.sameDirectionSpeedMultiplier;
       const relativeWorldSpeed = effectiveTrafficRelativeWorldSpeed(traffic.direction) * speedMultiplier;
+      const previousDepth = traffic.depth;
 
       traffic.distance -= relativeWorldSpeed * deltaSeconds;
       traffic.distance = Math.min(TRAFFIC_SPAWN_DISTANCE, traffic.distance);
       traffic.depth = clamp(1 - traffic.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
       updateTrafficWeave(traffic, deltaSeconds);
+      updateTrafficAudio(traffic, deltaSeconds, previousDepth);
 
       if (traffic.depth > window.RacingRender.playerDepth) {
         traffic.collidable = false;
@@ -1476,6 +1605,136 @@
     state.standingCows = [];
     state.standingCowSpawnTimer = standingCowSpawnDelay();
     state.nextStandingCowId = 1;
+  }
+
+  function tapriSpawnDelay() {
+    return randomInRange(TAPRI_CONFIG.spawnDelayRange);
+  }
+
+  function tapriRetryDelay() {
+    return randomInRange(TAPRI_CONFIG.retryDelayRange);
+  }
+
+  function resetTapris() {
+    state.tapris = [];
+    state.tapriSpawnTimer = tapriSpawnDelay();
+    state.nextTapriId = 1;
+  }
+
+  function tapriSpawnDistance() {
+    const minByReactionTime = kmhToWorldUnits(Math.max(state.speed, 80)) * TAPRI_CONFIG.minReactionSeconds;
+
+    return clamp(
+      Math.max(randomInRange(TAPRI_CONFIG.spawnDistanceRange), minByReactionTime),
+      TAPRI_CONFIG.spawnDistanceRange.min,
+      TRAFFIC_SPAWN_DISTANCE
+    );
+  }
+
+  function tapriEdgePosition(side) {
+    const difficulty = currentDifficulty();
+    const roadLaneCount = Math.max(1, difficulty.laneCount);
+    const dirtWidth = TRAFFIC_WEAVE_CONFIG.dirtRoadWidthRelativeToTarmacLane / roadLaneCount;
+
+    if (difficulty.id === "realism") {
+      return side === "left"
+        ? -TRAFFIC_WEAVE_CONFIG.realismDirtRoadGapRatio - dirtWidth
+        : 1 + TRAFFIC_WEAVE_CONFIG.realismDirtRoadGapRatio + dirtWidth;
+    }
+
+    return side === "left" ? 0 : 1;
+  }
+
+  function tapriSpawnIsSafe(side, distance) {
+    const edgePosition = tapriEdgePosition(side);
+    const sideSign = side === "left" ? -1 : 1;
+    const edgeLaneBlocked = side === "left" ? 0 : currentDifficulty().laneCount - 1;
+    const sameDepthTapri = state.tapris.some(function (tapri) {
+      return Math.abs(tapri.distance - distance) < TAPRI_CONFIG.minLongitudinalGap;
+    });
+    const hitsTraffic = state.traffic.some(function (traffic) {
+      return (
+        Math.abs(traffic.distance - distance) < TAPRI_CONFIG.trafficDistanceGap &&
+        Math.sign(trafficPosition(traffic) - 0.5) === sideSign &&
+        Math.abs(trafficPosition(traffic) - edgePosition) < TAPRI_CONFIG.trafficEdgePositionGap
+      );
+    });
+    const hitsDirtTraffic = allDirtTraffic().some(function (traffic) {
+      return (
+        traffic.side === side &&
+        Math.abs(traffic.distance - distance) < TAPRI_CONFIG.trafficDistanceGap
+      );
+    });
+    const hitsStandingCow = state.standingCows.some(function (cow) {
+      return (
+        Math.abs(cow.distance - distance) < TAPRI_CONFIG.standingCowDistanceGap &&
+        Math.abs(cow.position - edgePosition) < TAPRI_CONFIG.standingCowPositionGap
+      );
+    });
+    const hitsCrossingObstacle = state.crossingObstacle && (
+      Math.abs(state.crossingObstacle.distance - distance) < TAPRI_CONFIG.crossingDistanceGap &&
+      Math.abs(state.crossingObstacle.crossing - (side === "left" ? 0 : 1)) < TAPRI_CONFIG.crossingEdgePositionGap
+    );
+    const openLanes = state.traffic.filter(function (traffic) {
+      return Math.abs(traffic.distance - distance) < TAPRI_CONFIG.trafficDistanceGap;
+    }).map(function (traffic) {
+      return traffic.lane;
+    });
+    const openLaneCount = Math.max(0, currentDifficulty().laneCount - new Set(openLanes.concat([edgeLaneBlocked])).size);
+
+    return !sameDepthTapri && !hitsTraffic && !hitsDirtTraffic && !hitsStandingCow && !hitsCrossingObstacle && openLaneCount >= 1;
+  }
+
+  function spawnTapri() {
+    const side = Math.random() < 0.5 ? "left" : "right";
+    const distance = tapriSpawnDistance();
+
+    if (state.tapris.length >= TAPRI_CONFIG.maxActive || !tapriSpawnIsSafe(side, distance)) {
+      state.tapriSpawnTimer = tapriRetryDelay();
+      return;
+    }
+
+    state.tapris.push({
+      id: state.nextTapriId,
+      side: side,
+      distance: distance,
+      depth: clamp(1 - distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12),
+      scale: randomInRange(TAPRI_CONFIG.scaleRange),
+      intrusion: randomInRange(TAPRI_CONFIG.intrusionRange),
+      mirrored: side === "right",
+      collidable: true,
+      passed: false,
+    });
+    state.nextTapriId += 1;
+    state.tapriSpawnTimer = tapriSpawnDelay();
+  }
+
+  function updateTapris(deltaSeconds) {
+    if (state.tapris.length < TAPRI_CONFIG.maxActive) {
+      state.tapriSpawnTimer -= deltaSeconds;
+
+      if (state.tapriSpawnTimer <= 0) {
+        spawnTapri();
+      }
+    }
+
+    state.tapris.forEach(function (tapri) {
+      tapri.distance -= kmhToWorldUnits(state.speed) * deltaSeconds;
+      tapri.depth = clamp(1 - tapri.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
+
+      if (tapri.depth > window.RacingRender.playerDepth) {
+        tapri.collidable = false;
+        tapri.passed = true;
+      }
+    });
+
+    state.tapris = state.tapris.filter(function (tapri) {
+      return tapri.distance >= TAPRI_CONFIG.removeDistance && tapri.depth <= window.RacingRender.playerDepth + PASSED_DEPTH_MARGIN;
+    });
+
+    if (state.tapris.length >= TAPRI_CONFIG.maxActive) {
+      state.tapriSpawnTimer = tapriSpawnDelay();
+    }
   }
 
   function standingCowSpawnPosition() {
@@ -1626,6 +1885,9 @@
         Math.abs(cow.position - position) < SUGARCANE_POSITION_GAP * SUGARCANE_SAFETY_SCALE
       );
     });
+    const hitsTapri = state.tapris.some(function (tapri) {
+      return Math.abs(tapri.distance - SUGARCANE_SPAWN_DISTANCE) < SUGARCANE_CROSSING_DISTANCE_GAP * SUGARCANE_SAFETY_SCALE;
+    });
     const hitsPlayer = (
       Math.abs((1 - window.RacingRender.playerDepth) - SUGARCANE_SPAWN_DISTANCE) < SUGARCANE_CROSSING_DISTANCE_GAP * SUGARCANE_SAFETY_SCALE &&
       Math.abs(state.playerX - position) < SUGARCANE_POSITION_GAP * SUGARCANE_SAFETY_SCALE
@@ -1637,7 +1899,7 @@
       );
     });
 
-    return !hitsTraffic && !hitsCrossingObstacle && !hitsStandingCow && !hitsPlayer && !hitsSugarcane;
+    return !hitsTraffic && !hitsCrossingObstacle && !hitsStandingCow && !hitsTapri && !hitsPlayer && !hitsSugarcane;
   }
 
   function spawnSugarcane() {
@@ -1732,6 +1994,9 @@
     scoreHud.textContent = "Score: " + state.liveScore;
     sugarcaneHud.textContent = "Sugarcane: " + state.sugarcaneCount;
     jumpHud.textContent = "Jumps: " + availableJumpCharges();
+    if (soundHud) {
+      soundHud.textContent = "Sound: " + (window.RacingAudio && window.RacingAudio.isMuted && window.RacingAudio.isMuted() ? "Off" : "On");
+    }
   }
 
   function updatePlayerVisualState(deltaSeconds, direction, braking) {
@@ -1747,6 +2012,12 @@
     }
   }
 
+  function updateHumanMessage(deltaSeconds) {
+    if (state.humanMessage.timer > 0) {
+      state.humanMessage.timer = Math.max(0, state.humanMessage.timer - deltaSeconds);
+    }
+  }
+
   function rectanglesOverlap(a, b) {
     return (
       a.x < b.x + b.width &&
@@ -1758,6 +2029,33 @@
 
   function horizontalOverlap(a, b) {
     return a.x < b.x + b.width && a.x + a.width > b.x;
+  }
+
+  function audioEvent(name, detail) {
+    if (window.RacingAudio && typeof window.RacingAudio.play === "function") {
+      window.RacingAudio.play(name, detail || {});
+    }
+  }
+
+  function unlockAudio() {
+    if (window.RacingAudio && typeof window.RacingAudio.unlock === "function") {
+      window.RacingAudio.unlock();
+    }
+  }
+
+  function currentHumanTierRule() {
+    return HUMAN_TIER_RULES[tierNumber(state.playerTier)] || HUMAN_TIER_RULES[1];
+  }
+
+  function resolveNonLethalHumanCollision() {
+    const rule = currentHumanTierRule();
+
+    state.speed = clamp(state.speed * (rule.speedMultiplier || 1), 0, currentSurfaceMaxSpeed());
+    state.crossingObstacle = null;
+    state.crossingSpawnTimer = crossingSpawnDelay();
+    state.humanMessage.text = HUMAN_MESSAGE;
+    state.humanMessage.timer = HUMAN_MESSAGE_DURATION;
+    audioEvent("humanImpact");
   }
 
   function checkCollision() {
@@ -1790,9 +2088,46 @@
 
       return cow.collidable !== false && cowIsWithinCollisionApproach && horizontalOverlap(bounds.player, cowBounds);
     });
+    const hitTapri = bounds.tapris && bounds.tapris.some(function (tapriBounds, index) {
+      const tapri = state.tapris[index];
+      const depthDifference = playerDepth - tapri.depth;
+      const tapriIsWithinCollisionApproach = depthDifference >= 0 && depthDifference <= TRAFFIC_COLLISION_DEPTH_TOLERANCE;
+
+      return tapri.collidable !== false && tapriIsWithinCollisionApproach && horizontalOverlap(bounds.player, tapriBounds);
+    });
     const hitCrossingObstacle = visibleBounds.crossingObstacle && rectanglesOverlap(visibleBounds.player, visibleBounds.crossingObstacle);
 
-    if (hitTraffic || hitDirtTraffic || hitStandingCow || hitCrossingObstacle) {
+    if (hitCrossingObstacle && state.crossingObstacle && state.crossingObstacle.type === "human") {
+      if (currentHumanTierRule().lethal) {
+        audioEvent("vehicleCollision");
+        showGameOver();
+      } else {
+        resolveNonLethalHumanCollision();
+      }
+
+      return;
+    }
+
+    if (hitCrossingObstacle && state.crossingObstacle && state.crossingObstacle.type === "cow") {
+      audioEvent("cowCollision");
+      showGameOver();
+      return;
+    }
+
+    if (hitTapri) {
+      audioEvent("tapriCollision");
+      showGameOver();
+      return;
+    }
+
+    if (hitStandingCow) {
+      audioEvent("cowCollision");
+      showGameOver();
+      return;
+    }
+
+    if (hitTraffic || hitDirtTraffic) {
+      audioEvent("vehicleCollision");
       showGameOver();
     }
   }
@@ -1819,8 +2154,18 @@
         return;
       }
 
+      const previousTier = state.playerTier;
+      const previousJumpCharges = earnedJumpCharges();
+
       state.sugarcaneCount += 1;
       updatePlayerTier();
+      audioEvent("sugarcane");
+      if (state.playerTier !== previousTier) {
+        audioEvent("tierUp");
+      }
+      if (earnedJumpCharges() > previousJumpCharges) {
+        audioEvent("jumpCharge");
+      }
       state.liveScore = calculateLiveScore();
     });
 
@@ -1830,6 +2175,13 @@
   function update(deltaSeconds) {
     const input = window.RacingInput;
     const restartIsDown = input.restart();
+
+    if (input.consumeMuteToggle && input.consumeMuteToggle()) {
+      unlockAudio();
+      if (window.RacingAudio && typeof window.RacingAudio.toggleMute === "function") {
+        window.RacingAudio.toggleMute();
+      }
+    }
 
     if (state.screen === SCREEN.intro) {
       input.clearDifficultyRequests();
@@ -1842,14 +2194,18 @@
       if (input.consumeMenuUp()) {
         state.introSelectionIndex = (state.introSelectionIndex + introOptionButtons.length - 1) % introOptionButtons.length;
         updateIntroSelection();
+        audioEvent("menuMove");
       }
 
       if (input.consumeMenuDown()) {
         state.introSelectionIndex = (state.introSelectionIndex + 1) % introOptionButtons.length;
         updateIntroSelection();
+        audioEvent("menuMove");
       }
 
       if (input.consumeMenuActivate()) {
+        unlockAudio();
+        audioEvent("menuConfirm");
         activateIntroSelection();
         input.clearMenuRequests();
         input.clearDifficultyRequests();
@@ -1868,6 +2224,7 @@
       input.consumeMenuActivate();
 
       if (input.consumeBack()) {
+        audioEvent("menuBack");
         showIntro();
         input.clearMenuRequests();
         input.clearDifficultyRequests();
@@ -1886,9 +2243,12 @@
       input.consumeMenuActivate();
 
       if (selectedDifficulty) {
+        unlockAudio();
+        audioEvent("menuConfirm");
         startDifficulty(selectedDifficulty);
         input.clearMenuRequests();
       } else if (input.consumeBack()) {
+        audioEvent("menuBack");
         showIntro();
         input.clearDifficultyRequests();
       }
@@ -1907,9 +2267,11 @@
       input.consumeBack();
 
       if (input.consumeRestart() || (restartIsDown && !state.restartWasDown)) {
-        resetRun();
+        audioEvent("menuConfirm");
+        resetRun(false);
         input.clearMenuRequests();
       } else if (selectionRequested) {
+        audioEvent("menuBack");
         showDifficultySelection();
         input.clearDifficultyRequests();
       }
@@ -1976,10 +2338,19 @@
     removeOvertakenTraffic();
     updateCrossingObstacle(deltaSeconds);
     updateStandingCows(deltaSeconds);
+    updateTapris(deltaSeconds);
     updateSugarcane(deltaSeconds);
     updateJump(deltaSeconds);
+    updateHumanMessage(deltaSeconds);
     checkSugarcaneCollection();
     updateScore(deltaSeconds, braking);
+    if (window.RacingAudio && typeof window.RacingAudio.update === "function") {
+      window.RacingAudio.update(state, {
+        braking: braking,
+        airborne: playerIsAirborne(),
+        deltaSeconds: deltaSeconds,
+      });
+    }
     checkCollision();
   }
 

@@ -12,6 +12,7 @@
   let menuActivateRequested = false;
   let backRequested = false;
   let jumpRequested = false;
+  let muteRequested = false;
   let debugToggleRequested = false;
   const handledKeys = new Set([
     "ArrowLeft",
@@ -27,6 +28,7 @@
     "KeyA",
     "KeyD",
     "KeyH",
+    "KeyM",
     "KeyR",
     "KeyS",
     "KeyW",
@@ -42,6 +44,10 @@
 
     if (isDown) {
       activeKeys.add(event.code);
+
+      if (window.RacingAudio && typeof window.RacingAudio.unlock === "function") {
+        window.RacingAudio.unlock();
+      }
 
       if (event.repeat) {
         return;
@@ -60,6 +66,8 @@
         backRequested = true;
       } else if (event.code === "KeyH") {
         debugToggleRequested = true;
+      } else if (event.code === "KeyM") {
+        muteRequested = true;
       } else if (event.code === "ArrowUp" || event.code === "KeyW") {
         menuUpRequested = true;
       } else if (event.code === "ArrowDown" || event.code === "KeyS") {
@@ -171,6 +179,11 @@
     consumeDebugToggle: function () {
       const requested = debugToggleRequested;
       debugToggleRequested = false;
+      return requested;
+    },
+    consumeMuteToggle: function () {
+      const requested = muteRequested;
+      muteRequested = false;
       return requested;
     },
   };

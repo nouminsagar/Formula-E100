@@ -15,6 +15,17 @@
   const SEGMENT_COUNT = 26;
   const PLAYER_DEPTH = 0.88;
   const REALISM_SURFACE_HYSTERESIS_LANE_RATIO = 0.04;
+  const TAPRI_SOURCE_CROP = {
+    x: 2,
+    y: 0,
+    width: 803,
+    height: 609,
+  };
+  const TAPRI_RENDER_LANE_WIDTH_RATIO = 1.05;
+  const TAPRI_COLLISION_RATIO = {
+    width: 0.88,
+    height: 0.66,
+  };
   const STANDING_COW_COLLISION_RATIO = {
     width: 0.72,
     height: 0.68,
@@ -345,6 +356,7 @@
       },
     },
     sugarcane: "sugarcane.png",
+    tapri: "tapri.png",
   };
   const sprites = {};
 
@@ -382,6 +394,7 @@
     });
 
     preloadSprite("sugarcane", SPRITE_SOURCES.sugarcane);
+    preloadSprite("tapri", SPRITE_SOURCES.tapri);
   }
 
   function spriteIsReady(sprite) {
@@ -752,6 +765,60 @@
     };
   }
 
+  function tapriRoadEdge(width, height, tapri, difficulty) {
+    const depth = tapri.depth;
+
+    if (difficulty && difficulty.id === "realism") {
+      const dirtRoad = dirtRoadAtDepth(width, height, depth, tapri.side, difficulty);
+
+      return {
+        edgeX: tapri.side === "left" ? dirtRoad.left : dirtRoad.right,
+        roadWidth: roadAtDepth(width, height, depth, difficulty).width,
+        laneWidth: roadAtDepth(width, height, depth, difficulty).width / Math.max(1, difficulty.laneCount),
+        y: dirtRoad.y,
+      };
+    }
+
+    const road = roadAtDepth(width, height, depth, difficulty);
+
+    return {
+      edgeX: tapri.side === "left" ? road.left : road.right,
+      roadWidth: road.width,
+      laneWidth: road.width / Math.max(1, difficulty ? difficulty.laneCount : 4),
+      y: road.y,
+    };
+  }
+
+  function tapriBounds(width, height, tapri, difficulty) {
+    const edge = tapriRoadEdge(width, height, tapri, difficulty);
+    const tapriWidth = edge.laneWidth * TAPRI_RENDER_LANE_WIDTH_RATIO * (tapri.scale || 1);
+    const tapriHeight = tapriWidth * (TAPRI_SOURCE_CROP.height / TAPRI_SOURCE_CROP.width);
+    const hitWidth = tapriWidth * TAPRI_COLLISION_RATIO.width;
+    const intrusion = hitWidth * (tapri.intrusion || 0.32);
+    let hitX;
+
+    if (tapri.side === "left") {
+      hitX = edge.edgeX + intrusion - hitWidth;
+    } else {
+      hitX = edge.edgeX - intrusion;
+    }
+
+    return {
+      x: hitX - (tapriWidth - hitWidth) * 0.5,
+      y: edge.y - tapriHeight,
+      width: tapriWidth,
+      height: tapriHeight,
+    };
+  }
+
+  function tapriCollisionBounds(width, height, tapri, difficulty) {
+    return bottomCenteredBounds(
+      tapriBounds(width, height, tapri, difficulty),
+      TAPRI_COLLISION_RATIO.width,
+      TAPRI_COLLISION_RATIO.height
+    );
+  }
+
   function dirtTrafficBounds(width, height, traffic, difficulty) {
     const dirtRoad = dirtRoadAtDepth(width, height, traffic.depth, traffic.side, difficulty);
     const centerX = Number.isFinite(traffic.logicalX)
@@ -909,6 +976,29 @@
       width: sugarcaneWidth,
       height: sugarcaneHeight,
     };
+  }
+
+  function wrapText(ctx, text, maxWidth) {
+    const words = text.split(" ");
+    const lines = [];
+    let line = "";
+
+    words.forEach(function (word) {
+      const testLine = line ? line + " " + word : word;
+
+      if (ctx.measureText(testLine).width > maxWidth && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = testLine;
+      }
+    });
+
+    if (line) {
+      lines.push(line);
+    }
+
+    return lines;
   }
 
   function drawBackground(ctx, width, height) {
@@ -1619,6 +1709,103 @@
     }
   }
 
+  function drawTapri(ctx, width, height, tapri, difficulty) {
+    if (!tapri) {
+      return;
+    }
+
+    const bounds = tapriBounds(width, height, tapri, difficulty);
+    const sprite = sprites.tapri;
+
+    if (!spriteIsReady(sprite)) {
+      ctx.fillStyle = "#a45117";
+      ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      ctx.fillStyle = "#2a160c";
+      ctx.fillRect(bounds.x + bounds.width * 0.1, bounds.y + bounds.height * 0.25, bounds.width * 0.8, bounds.height * 0.42);
+      return;
+    }
+
+    ctx.save();
+    if (tapri.mirrored) {
+      ctx.translate(bounds.x + bounds.width, bounds.y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(
+        sprite.image,
+        TAPRI_SOURCE_CROP.x,
+        TAPRI_SOURCE_CROP.y,
+        TAPRI_SOURCE_CROP.width,
+        TAPRI_SOURCE_CROP.height,
+        0,
+        0,
+        bounds.width,
+        bounds.height
+      );
+    } else {
+      ctx.drawImage(
+        sprite.image,
+        TAPRI_SOURCE_CROP.x,
+        TAPRI_SOURCE_CROP.y,
+        TAPRI_SOURCE_CROP.width,
+        TAPRI_SOURCE_CROP.height,
+        bounds.x,
+        bounds.y,
+        bounds.width,
+        bounds.height
+      );
+    }
+    ctx.restore();
+  }
+
+  function drawSpeechBubble(ctx, width, height, state) {
+    const bubble = state.humanMessage;
+
+    if (!bubble || bubble.timer <= 0 || !bubble.text) {
+      return;
+    }
+
+    const player = playerBounds(width, height, state.playerX, state.playerTier, state.difficulty, state);
+    const maxTextWidth = Math.min(260, width * 0.34);
+    const lineHeight = 16;
+    const paddingX = 10;
+    const paddingY = 8;
+
+    ctx.save();
+    ctx.font = "700 13px 'Courier New', 'Lucida Console', monospace";
+    const lines = wrapText(ctx, bubble.text, maxTextWidth);
+    const textWidth = Math.max.apply(null, lines.map(function (line) {
+      return ctx.measureText(line).width;
+    }));
+    const bubbleWidth = textWidth + paddingX * 2;
+    const bubbleHeight = lines.length * lineHeight + paddingY * 2;
+    const hudAvoidY = 18 + 120;
+    let x = player.x + player.width * 0.5 - bubbleWidth * 0.5;
+    let y = player.y - bubbleHeight - 18;
+
+    x = clamp(x, 10, width - bubbleWidth - 10);
+    y = clamp(y, hudAvoidY, height - bubbleHeight - 10);
+
+    ctx.fillStyle = "rgba(247, 243, 232, 0.96)";
+    ctx.strokeStyle = "#20242c";
+    ctx.lineWidth = 3;
+    ctx.fillRect(x, y, bubbleWidth, bubbleHeight);
+    ctx.strokeRect(x, y, bubbleWidth, bubbleHeight);
+
+    const pointerX = clamp(player.x + player.width * 0.5, x + 16, x + bubbleWidth - 16);
+    ctx.beginPath();
+    ctx.moveTo(pointerX - 8, y + bubbleHeight - 1);
+    ctx.lineTo(pointerX + 8, y + bubbleHeight - 1);
+    ctx.lineTo(pointerX, y + bubbleHeight + 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#20242c";
+    lines.forEach(function (line, index) {
+      ctx.fillText(line, x + paddingX, y + paddingY + lineHeight * (index + 0.78));
+    });
+    ctx.restore();
+  }
+
   function drawDebugRect(ctx, bounds, color) {
     ctx.save();
     ctx.strokeStyle = color;
@@ -1657,6 +1844,9 @@
       ctx.font = "12px Arial, Helvetica, sans-serif";
       ctx.fillText(traffic.depth.toFixed(3), bounds.x, bounds.y - 4);
       ctx.restore();
+    });
+    state.tapris.forEach(function (tapri) {
+      drawDebugRect(ctx, tapriCollisionBounds(width, height, tapri, state.difficulty), "#ff9c2a");
     });
   }
 
@@ -1783,6 +1973,9 @@
         sugarcanes: state.sugarcanes.map(function (sugarcane) {
           return sugarcaneBounds(width, height, sugarcane, state.difficulty);
         }),
+        tapris: state.tapris.map(function (tapri) {
+          return tapriCollisionBounds(width, height, tapri, state.difficulty);
+        }),
       };
     },
     getVisibleBounds: function (canvas, state) {
@@ -1801,6 +1994,9 @@
         }),
         sugarcanes: state.sugarcanes.map(function (sugarcane) {
           return sugarcaneBounds(width, height, sugarcane, state.difficulty);
+        }),
+        tapris: state.tapris.map(function (tapri) {
+          return tapriBounds(width, height, tapri, state.difficulty);
         }),
       };
     },
@@ -1852,6 +2048,14 @@
         });
       });
 
+      state.tapris.forEach(function (tapri) {
+        renderItems.push({
+          type: "tapri",
+          depth: tapri.depth,
+          value: tapri,
+        });
+      });
+
       renderItems.push({
         type: "player",
         depth: state.jumpArcAmount > 0 ? 2 : PLAYER_DEPTH,
@@ -1876,10 +2080,13 @@
           drawCrossingObstacle(ctx, width, height, item.value, state.difficulty);
         } else if (item.type === "standingCow") {
           drawStandingCow(ctx, width, height, item.value, state.difficulty);
+        } else if (item.type === "tapri") {
+          drawTapri(ctx, width, height, item.value, state.difficulty);
         } else if (item.type === "player") {
           drawCar(ctx, width, height, state);
         }
       });
+      drawSpeechBubble(ctx, width, height, state);
       drawDebugHitboxes(ctx, width, height, state, laneCount);
     },
   };
