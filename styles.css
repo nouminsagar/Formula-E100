@@ -20,13 +20,9 @@ body {
 
 .game-shell {
   position: relative;
-  width: min(100vw, calc(100vh * 16 / 9), 1280px);
-  height: min(100vh, calc(100vw * 9 / 16), 720px);
-  aspect-ratio: 16 / 9;
+  width: min(100vw, 1280px);
+  height: min(100vh, 720px);
   background: #6fb3db;
-  overflow: hidden;
-  touch-action: none;
-  user-select: none;
 }
 
 #gameCanvas {
@@ -64,89 +60,6 @@ body {
   text-align: center;
 }
 
-.game-over-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
-
-.touch-controls {
-  position: absolute;
-  inset: 0;
-  z-index: 15;
-  display: none;
-  align-items: flex-end;
-  justify-content: space-between;
-  padding:
-    0
-    max(18px, env(safe-area-inset-right))
-    max(18px, env(safe-area-inset-bottom))
-    max(18px, env(safe-area-inset-left));
-  pointer-events: none;
-}
-
-.touch-control-group {
-  display: flex;
-  gap: clamp(10px, 1.8vw, 18px);
-  pointer-events: auto;
-}
-
-.touch-control-button {
-  width: clamp(64px, 10vmin, 90px);
-  height: clamp(64px, 10vmin, 90px);
-  border: 2px solid #f7f3e8;
-  border-radius: 0;
-  background: rgba(24, 28, 34, 0.64);
-  color: #f7f3e8;
-  font: inherit;
-  font-size: clamp(13px, 2.1vmin, 18px);
-  font-weight: 900;
-  letter-spacing: 1px;
-  text-align: center;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-
-.touch-control-button.is-pressed {
-  border-color: #d62f2f;
-  background: rgba(64, 16, 16, 0.88);
-  color: #ffffff;
-}
-
-.touch-control-button[aria-disabled="true"] {
-  opacity: 0.45;
-}
-
-.orientation-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: grid;
-  place-content: center;
-  gap: 12px;
-  padding: 28px;
-  background: rgba(19, 20, 24, 0.94);
-  color: #f7f3e8;
-  font-weight: 900;
-  text-align: center;
-  letter-spacing: 2px;
-}
-
-.orientation-overlay div:first-child {
-  color: #d62f2f;
-  font-size: clamp(28px, 8vw, 60px);
-  text-shadow:
-    3px 3px 0 #401010,
-    6px 6px 0 #260909;
-}
-
-.orientation-overlay div:last-child {
-  font-size: clamp(14px, 3.4vw, 24px);
-}
-
 .menu-screen {
   position: absolute;
   inset: 0;
@@ -166,59 +79,6 @@ body {
 
 .game-over-message[hidden] {
   display: none;
-}
-
-.orientation-overlay[hidden] {
-  display: none;
-}
-
-@media (pointer: coarse) {
-  .game-shell.is-gameplay .touch-controls {
-    display: flex;
-  }
-
-  .game-shell.is-orientation-blocked .touch-controls {
-    display: none;
-  }
-}
-
-@media (max-height: 480px) and (orientation: landscape) {
-  .game-hud {
-    top: 10px;
-    left: 10px;
-    font-size: 14px;
-    line-height: 1.22;
-  }
-
-  .instructions-screen {
-    padding: 8px;
-  }
-
-  .instructions-panel {
-    width: min(930px, calc(100vw - 16px));
-    max-height: calc(100vh - 16px);
-    gap: 2px;
-    padding: 8px 10px;
-  }
-
-  .instructions-panel h2 {
-    font-size: 24px;
-  }
-
-  .instructions-panel h3 {
-    font-size: 11px;
-  }
-
-  .instructions-panel p,
-  .instructions-grid div,
-  .back-help {
-    font-size: 10px;
-  }
-
-  .back-option {
-    padding: 4px 14px;
-    font-size: 14px;
-  }
 }
 
 .game-over-message div:first-child {
@@ -266,12 +126,6 @@ body {
   min-width: 320px;
   padding: 12px 24px;
   font-size: 24px;
-}
-
-.game-over-button {
-  min-width: 190px;
-  padding: 8px 14px;
-  font-size: 17px;
 }
 
 .menu-option:hover,

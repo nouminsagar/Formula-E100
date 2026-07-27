@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>FORMULA E100</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="styles.css">
@@ -22,7 +22,7 @@
           <h2>HOW TO PLAY</h2>
           <section>
             <h3>OBJECTIVE</h3>
-            <p>Drive as far as possible, avoid obstacles, collect sugarcane, upgrade the car and achieve the highest score. Keyboard and touch controls are both supported.</p>
+            <p>Drive as far as possible, avoid obstacles, collect sugarcane, upgrade the car and achieve the highest score.</p>
           </section>
           <section class="instructions-grid">
             <h3>CONTROLS</h3>
@@ -62,10 +62,6 @@
           <section>
             <h3>JUMP</h3>
             <p>Every 25 sugarcanes earns one jump. Press SPACE during gameplay to jump over traffic, humans and cows. You cannot steer or collect sugarcane while airborne.</p>
-          </section>
-          <section>
-            <h3>TOUCH CONTROLS</h3>
-            <p><strong>ON PHONES AND TABLETS:</strong> LEFT / RIGHT steer, BRAKE decelerates, JUMP uses one earned jump. Play in landscape orientation.</p>
           </section>
           <section>
             <h3>SCORING</h3>
@@ -108,24 +104,6 @@
         <div id="finalScoreMessage">Final score: 0</div>
         <div>Press R to restart</div>
         <div>Press Esc for difficulty selection</div>
-        <div class="game-over-actions">
-          <button id="gameOverRestartButton" class="menu-option game-over-button" type="button">RESTART</button>
-          <button id="gameOverDifficultyButton" class="menu-option game-over-button" type="button">DIFFICULTY MENU</button>
-        </div>
-      </div>
-      <div id="touchControls" class="touch-controls" aria-label="Touch gameplay controls">
-        <div class="touch-control-group touch-control-group-left">
-          <button class="touch-control-button" type="button" data-touch-action="left" aria-label="Steer left">LEFT</button>
-          <button class="touch-control-button" type="button" data-touch-action="right" aria-label="Steer right">RIGHT</button>
-        </div>
-        <div class="touch-control-group touch-control-group-right">
-          <button class="touch-control-button" type="button" data-touch-action="brake" aria-label="Brake">BRAKE</button>
-          <button id="touchJumpButton" class="touch-control-button" type="button" data-touch-action="jump" aria-label="Jump" aria-disabled="true">JUMP</button>
-        </div>
-      </div>
-      <div id="orientationOverlay" class="orientation-overlay" hidden>
-        <div>ROTATE YOUR DEVICE</div>
-        <div>PLAY FORMULA E100 IN LANDSCAPE</div>
       </div>
     </main>
 

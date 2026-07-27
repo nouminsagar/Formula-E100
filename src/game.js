@@ -3,7 +3,6 @@
 
   const canvas = document.getElementById("gameCanvas");
   const ctx = canvas.getContext("2d");
-  const gameShell = document.querySelector(".game-shell");
   const gameHud = document.getElementById("gameHud");
   const speedHud = document.getElementById("speedHud");
   const scoreHud = document.getElementById("scoreHud");
@@ -11,13 +10,9 @@
   const jumpHud = document.getElementById("jumpHud");
   const gameOverMessage = document.getElementById("gameOverMessage");
   const finalScoreMessage = document.getElementById("finalScoreMessage");
-  const gameOverRestartButton = document.getElementById("gameOverRestartButton");
-  const gameOverDifficultyButton = document.getElementById("gameOverDifficultyButton");
   const introScreen = document.getElementById("introScreen");
   const instructionsScreen = document.getElementById("instructionsScreen");
   const difficultyScreen = document.getElementById("difficultyScreen");
-  const orientationOverlay = document.getElementById("orientationOverlay");
-  const touchJumpButton = document.getElementById("touchJumpButton");
   const introOptionButtons = Array.prototype.slice.call(document.querySelectorAll("[data-intro-option]"));
   const difficultyOptionButtons = Array.prototype.slice.call(document.querySelectorAll("[data-difficulty]"));
   const instructionsBackButton = document.getElementById("instructionsBackButton");
@@ -373,7 +368,6 @@
     returnBlendOncomingStart: 0,
     gameOver: false,
     debugHitboxes: false,
-    orientationBlocked: false,
     restartWasDown: false,
     lastTime: performance.now(),
   };
@@ -384,38 +378,6 @@
     canvas.width = Math.max(1, Math.floor(rect.width * scale));
     canvas.height = Math.max(1, Math.floor(rect.height * scale));
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  }
-
-  function clearTouchInputs() {
-    if (window.RacingInput && window.RacingInput.clearTouchInputs) {
-      window.RacingInput.clearTouchInputs();
-    }
-  }
-
-  function touchControlsMayBeVisible() {
-    return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
-  }
-
-  function viewportIsPortrait() {
-    return window.innerHeight > window.innerWidth;
-  }
-
-  function updateOrientationOverlay() {
-    const blocked = touchControlsMayBeVisible() && viewportIsPortrait();
-
-    if (blocked !== state.orientationBlocked) {
-      clearTouchInputs();
-    }
-
-    state.orientationBlocked = blocked;
-
-    if (orientationOverlay) {
-      orientationOverlay.hidden = !blocked;
-    }
-
-    if (gameShell) {
-      gameShell.classList.toggle("is-orientation-blocked", blocked);
-    }
   }
 
   function clamp(value, min, max) {
@@ -926,19 +888,11 @@
     difficultyScreen.hidden = true;
   }
 
-  function setGameplayChrome(isGameplay) {
-    if (gameShell) {
-      gameShell.classList.toggle("is-gameplay", isGameplay);
-    }
-  }
-
   function showIntro() {
     state.screen = SCREEN.intro;
     state.difficulty = null;
     state.gameOver = false;
-    clearTouchInputs();
     clearTransientRunState();
-    setGameplayChrome(false);
     state.introSelectionIndex = clamp(state.introSelectionIndex, 0, introOptionButtons.length - 1);
     hideMenuScreens();
     gameHud.hidden = true;
@@ -951,9 +905,7 @@
     state.screen = SCREEN.instructions;
     state.difficulty = null;
     state.gameOver = false;
-    clearTouchInputs();
     clearTransientRunState();
-    setGameplayChrome(false);
     hideMenuScreens();
     gameHud.hidden = true;
     gameOverMessage.hidden = true;
@@ -964,9 +916,7 @@
     state.screen = SCREEN.difficulty;
     state.difficulty = null;
     state.gameOver = false;
-    clearTouchInputs();
     clearTransientRunState();
-    setGameplayChrome(false);
     hideMenuScreens();
     gameHud.hidden = true;
     gameOverMessage.hidden = true;
@@ -975,8 +925,6 @@
 
   function showGameplay() {
     state.screen = SCREEN.gameplay;
-    clearTouchInputs();
-    setGameplayChrome(true);
     hideMenuScreens();
     gameHud.hidden = false;
     gameOverMessage.hidden = true;
@@ -985,8 +933,6 @@
   function showGameOver() {
     state.screen = SCREEN.gameOver;
     state.gameOver = true;
-    clearTouchInputs();
-    setGameplayChrome(false);
     state.jumpState = JUMP_STATES.grounded;
     state.jumpElapsed = 0;
     state.jumpArcAmount = 0;
@@ -1009,7 +955,6 @@
   }
 
   function resetRun() {
-    clearTouchInputs();
     state.speed = 0;
     state.playerX = 0.5;
     state.playerTier = PLAYER_TIERS[0];
@@ -1083,22 +1028,6 @@
     showIntro();
     window.RacingInput.clearMenuRequests();
     window.RacingInput.clearDifficultyRequests();
-  });
-
-  gameOverRestartButton.addEventListener("click", function () {
-    if (state.screen === SCREEN.gameOver) {
-      resetRun();
-      window.RacingInput.clearMenuRequests();
-      window.RacingInput.clearDifficultyRequests();
-    }
-  });
-
-  gameOverDifficultyButton.addEventListener("click", function () {
-    if (state.screen === SCREEN.gameOver) {
-      showDifficultySelection();
-      window.RacingInput.clearMenuRequests();
-      window.RacingInput.clearDifficultyRequests();
-    }
   });
 
   function laneIsSafeForSpawn(lane) {
@@ -1799,20 +1728,10 @@
   }
 
   function updateHud() {
-    const jumpDisabled = state.screen !== SCREEN.gameplay ||
-      availableJumpCharges() <= 0 ||
-      playerIsAirborne() ||
-      state.orientationBlocked;
-
     speedHud.textContent = "Speed: " + Math.round(state.speed) + " km/h";
     scoreHud.textContent = "Score: " + state.liveScore;
     sugarcaneHud.textContent = "Sugarcane: " + state.sugarcaneCount;
     jumpHud.textContent = "Jumps: " + availableJumpCharges();
-
-    if (touchJumpButton) {
-      touchJumpButton.setAttribute("aria-disabled", jumpDisabled ? "true" : "false");
-      touchJumpButton.classList.toggle("is-disabled", jumpDisabled);
-    }
   }
 
   function updatePlayerVisualState(deltaSeconds, direction, braking) {
@@ -1912,8 +1831,6 @@
     const input = window.RacingInput;
     const restartIsDown = input.restart();
 
-    updateOrientationOverlay();
-
     if (state.screen === SCREEN.intro) {
       input.clearDifficultyRequests();
       input.consumeSelection();
@@ -2008,13 +1925,6 @@
     input.consumeMenuDown();
     input.consumeMenuActivate();
 
-    if (state.orientationBlocked) {
-      input.consumeJump();
-      clearTouchInputs();
-      state.restartWasDown = restartIsDown;
-      return;
-    }
-
     if (input.consumeDebugToggle()) {
       state.debugHitboxes = !state.debugHitboxes;
     }
@@ -2084,17 +1994,8 @@
     requestAnimationFrame(frame);
   }
 
-  window.addEventListener("resize", function () {
-    resizeCanvas();
-    updateOrientationOverlay();
-    clearTouchInputs();
-  });
-  window.addEventListener("orientationchange", function () {
-    updateOrientationOverlay();
-    clearTouchInputs();
-  });
+  window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
-  updateOrientationOverlay();
   showIntro();
   requestAnimationFrame(frame);
 })();

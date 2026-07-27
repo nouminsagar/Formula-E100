@@ -2,19 +2,6 @@
   "use strict";
 
   const activeKeys = new Set();
-  const logicalInput = {
-    left: false,
-    right: false,
-    brake: false,
-    jumpPressed: false,
-  };
-  const touchActions = {
-    left: new Set(),
-    right: new Set(),
-    brake: new Set(),
-  };
-  const touchButtons = {};
-  const pointerActions = new Map();
   let restartRequested = false;
   let easyRequested = false;
   let hardRequested = false;
@@ -25,7 +12,6 @@
   let menuActivateRequested = false;
   let backRequested = false;
   let jumpRequested = false;
-  let touchJumpRequested = false;
   let debugToggleRequested = false;
   const handledKeys = new Set([
     "ArrowLeft",
@@ -89,15 +75,6 @@
     } else {
       activeKeys.delete(event.code);
     }
-
-    updateLogicalInput();
-  }
-
-  function updateLogicalInput() {
-    logicalInput.left = activeKeys.has("ArrowLeft") || activeKeys.has("KeyA") || touchActions.left.size > 0;
-    logicalInput.right = activeKeys.has("ArrowRight") || activeKeys.has("KeyD") || touchActions.right.size > 0;
-    logicalInput.brake = activeKeys.has("ArrowDown") || activeKeys.has("KeyS") || touchActions.brake.size > 0;
-    logicalInput.jumpPressed = jumpRequested || touchJumpRequested;
   }
 
   window.addEventListener("keydown", function (event) {
@@ -108,122 +85,15 @@
     setKey(event, false);
   });
 
-  function setButtonPressed(action, isPressed) {
-    const button = touchButtons[action];
-
-    if (button) {
-      button.classList.toggle("is-pressed", isPressed);
-    }
-
-    updateLogicalInput();
-  }
-
-  function refreshTouchButtonStates() {
-    setButtonPressed("left", touchActions.left.size > 0);
-    setButtonPressed("right", touchActions.right.size > 0);
-    setButtonPressed("brake", touchActions.brake.size > 0);
-  }
-
-  function releasePointer(pointerId) {
-    const action = pointerActions.get(pointerId);
-
-    if (!action) {
-      return;
-    }
-
-    pointerActions.delete(pointerId);
-
-    if (touchActions[action]) {
-      touchActions[action].delete(pointerId);
-    }
-
-    refreshTouchButtonStates();
-  }
-
-  function clearTouchInputs() {
-    touchActions.left.clear();
-    touchActions.right.clear();
-    touchActions.brake.clear();
-    pointerActions.clear();
-    touchJumpRequested = false;
-    refreshTouchButtonStates();
-    setButtonPressed("jump", false);
-    updateLogicalInput();
-  }
-
-  function setupTouchControls() {
-    const buttons = Array.prototype.slice.call(document.querySelectorAll("[data-touch-action]"));
-
-    buttons.forEach(function (button) {
-      const action = button.getAttribute("data-touch-action");
-
-      touchButtons[action] = button;
-
-      button.addEventListener("pointerdown", function (event) {
-        event.preventDefault();
-
-        if (button.setPointerCapture) {
-          try {
-            button.setPointerCapture(event.pointerId);
-          } catch (error) {
-            // Synthetic or interrupted pointer events may not be capturable.
-          }
-        }
-
-        if (action === "jump") {
-          if (button.getAttribute("aria-disabled") !== "true") {
-            touchJumpRequested = true;
-            setButtonPressed("jump", true);
-            updateLogicalInput();
-          }
-          return;
-        }
-
-        if (touchActions[action]) {
-          pointerActions.set(event.pointerId, action);
-          touchActions[action].add(event.pointerId);
-          refreshTouchButtonStates();
-          updateLogicalInput();
-        }
-      });
-
-      ["pointerup", "pointercancel", "lostpointercapture"].forEach(function (eventName) {
-        button.addEventListener(eventName, function (event) {
-          event.preventDefault();
-
-          if (action === "jump") {
-            setButtonPressed("jump", false);
-          }
-
-          releasePointer(event.pointerId);
-        });
-      });
-    });
-  }
-
-  window.addEventListener("blur", clearTouchInputs);
-  window.addEventListener("orientationchange", clearTouchInputs);
-  window.addEventListener("resize", clearTouchInputs);
-  document.addEventListener("visibilitychange", function () {
-    if (document.hidden) {
-      clearTouchInputs();
-    }
-  });
-
-  setupTouchControls();
-
   window.RacingInput = {
     steerLeft: function () {
-      updateLogicalInput();
-      return logicalInput.left;
+      return activeKeys.has("ArrowLeft") || activeKeys.has("KeyA");
     },
     steerRight: function () {
-      updateLogicalInput();
-      return logicalInput.right;
+      return activeKeys.has("ArrowRight") || activeKeys.has("KeyD");
     },
     braking: function () {
-      updateLogicalInput();
-      return logicalInput.brake;
+      return activeKeys.has("ArrowDown") || activeKeys.has("KeyS");
     },
     restart: function () {
       return activeKeys.has("KeyR");
@@ -281,10 +151,8 @@
       return requested;
     },
     consumeJump: function () {
-      const requested = jumpRequested || touchJumpRequested;
+      const requested = jumpRequested;
       jumpRequested = false;
-      touchJumpRequested = false;
-      updateLogicalInput();
       return requested;
     },
     clearMenuRequests: function () {
@@ -292,10 +160,8 @@
       menuDownRequested = false;
       menuActivateRequested = false;
       jumpRequested = false;
-      touchJumpRequested = false;
       backRequested = false;
       selectionRequested = false;
-      updateLogicalInput();
     },
     clearDifficultyRequests: function () {
       easyRequested = false;
@@ -307,6 +173,5 @@
       debugToggleRequested = false;
       return requested;
     },
-    clearTouchInputs: clearTouchInputs,
   };
 })();
