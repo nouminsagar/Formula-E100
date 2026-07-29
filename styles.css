@@ -247,10 +247,10 @@ body {
 
 .instructions-panel {
   display: grid;
-  gap: 4px;
-  width: min(900px, calc(100vw - 40px));
+  gap: 10px;
+  width: min(820px, calc(100vw - 40px));
   max-height: calc(100vh - 40px);
-  padding: 12px 16px;
+  padding: 18px 22px;
   border: 2px solid #f7f3e8;
   background: rgba(24, 28, 34, 0.92);
   text-align: left;
@@ -261,40 +261,35 @@ body {
 }
 
 .instructions-panel h3 {
-  margin: 0 0 2px;
+  margin: 0 0 5px;
   color: #f0c86a;
-  font-size: 13px;
+  font-size: 16px;
   letter-spacing: 1px;
 }
 
 .instructions-panel p {
-  margin: 0 0 2px;
-  font-size: 12px;
-  line-height: 1.1;
+  margin: 0 0 8px;
+  font-size: 14px;
+  line-height: 1.26;
 }
 
-.instructions-grid {
+.instructions-section {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2px 14px;
+  gap: 5px;
 }
 
-.instructions-grid h3 {
-  grid-column: 1 / -1;
-}
-
-.instructions-grid div {
+.instructions-controls {
   display: grid;
-  grid-template-columns: 132px 1fr;
-  gap: 7px;
-  font-size: 12px;
-  line-height: 1.1;
+  gap: 3px;
+  margin: 0 0 8px;
 }
 
-.instructions-columns {
+.instructions-controls div {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  grid-template-columns: 190px 1fr;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.2;
 }
 
 .back-option {

@@ -394,11 +394,12 @@
     maxGapSeconds: 1,
   };
   const TIER_5_CONFIG = {
-    triggerSugarcanes: 40,
-    durationSeconds: 5,
-    speedKmh: 1235,
+    firstTriggerSugarcanes: 40,
+    triggerIntervalSugarcanes: 10,
+    durationSeconds: 3.0,
+    gameplaySpeedKmh: 1235,
     scoreSpeedKmh: 80,
-    fullSpeedPointsPerSecond: 2,
+    fullSpeedScoreRate: 2,
   };
   const GAMEPLAY_MENU_CONFIG = {
     options: ["continue", "return"],
@@ -494,7 +495,7 @@
     retryMessageTimer: 0,
     netaQuitPressCount: 0,
     netaQuitTimer: 0,
-    tier5TriggeredThisRun: false,
+    nextRafaleTrigger: TIER_5_CONFIG.firstTriggerSugarcanes,
     tier5Active: false,
     tier5ElapsedSeconds: 0,
     tier5SavedTier: null,
@@ -548,7 +549,7 @@
   }
 
   function worldTravelSpeedKmh() {
-    return state.tier5Active ? TIER_5_CONFIG.speedKmh : state.speed;
+    return state.tier5Active ? TIER_5_CONFIG.gameplaySpeedKmh : state.speed;
   }
 
   function scoreDistanceSpeedKmh() {
@@ -598,7 +599,7 @@
     }
 
     return worldVisualSpeed(MOVEMENT_CONFIG.visualSpeedCurve.maxReferenceSpeedKmh) *
-      (TIER_5_CONFIG.speedKmh / MOVEMENT_CONFIG.visualSpeedCurve.maxReferenceSpeedKmh);
+      (TIER_5_CONFIG.gameplaySpeedKmh / MOVEMENT_CONFIG.visualSpeedCurve.maxReferenceSpeedKmh);
   }
 
   function sameDirectionArcadeApproach(speedKmh) {
@@ -842,23 +843,29 @@
   }
 
   function beginTier5() {
-    if (netaActive() || state.tier5TriggeredThisRun || state.tier5Active) {
+    if (netaActive() || state.tier5Active || state.sugarcaneCount < state.nextRafaleTrigger) {
       return false;
     }
 
-    state.tier5TriggeredThisRun = true;
+    state.nextRafaleTrigger += TIER_5_CONFIG.triggerIntervalSugarcanes;
     state.tier5Active = true;
     state.tier5ElapsedSeconds = 0;
     state.tier5SavedTier = state.playerTier;
     state.tier5SavedSpeed = state.speed;
     state.tier5SavedX = state.playerX;
-    state.speed = TIER_5_CONFIG.speedKmh;
+    state.speed = TIER_5_CONFIG.gameplaySpeedKmh;
     state.playerX = state.tier5SavedX;
     state.playerSteeringPose = 0;
     state.dirtDriftCurrent = 0;
     state.dirtDriftTarget = 0;
 
     return true;
+  }
+
+  function advanceRafaleTriggerPastCollectedSugarcane() {
+    while (state.nextRafaleTrigger <= state.sugarcaneCount) {
+      state.nextRafaleTrigger += TIER_5_CONFIG.triggerIntervalSugarcanes;
+    }
   }
 
   function endTier5() {
@@ -883,7 +890,7 @@
     }
 
     state.tier5ElapsedSeconds += deltaSeconds;
-    state.speed = TIER_5_CONFIG.speedKmh;
+    state.speed = TIER_5_CONFIG.gameplaySpeedKmh;
     state.playerX = state.tier5SavedX;
     state.playerSteeringPose = 0;
     state.dirtDriftCurrent = 0;
@@ -1147,7 +1154,7 @@
   }
 
   function resetTier5State() {
-    state.tier5TriggeredThisRun = false;
+    state.nextRafaleTrigger = TIER_5_CONFIG.firstTriggerSugarcanes;
     state.tier5Active = false;
     state.tier5ElapsedSeconds = 0;
     state.tier5SavedTier = null;
@@ -2624,7 +2631,7 @@
     state.distanceMetres += (scoreDistanceSpeedKmh() / 3.6) * deltaSeconds;
 
     if (state.tier5Active) {
-      state.fullSpeedScore += TIER_5_CONFIG.fullSpeedPointsPerSecond * deltaSeconds;
+      state.fullSpeedScore += TIER_5_CONFIG.fullSpeedScoreRate * deltaSeconds;
       state.liveScore = calculateLiveScore();
       return;
     }
@@ -2909,13 +2916,17 @@
       updatePlayerTier();
       if (
         !netaActive() &&
-        !state.tier5TriggeredThisRun &&
-        state.sugarcaneCount >= TIER_5_CONFIG.triggerSugarcanes
+        !state.tier5Active &&
+        state.sugarcaneCount >= state.nextRafaleTrigger
       ) {
         beginTier5();
       }
       state.liveScore = calculateLiveScore();
     });
+
+    if (!netaActive() && state.tier5Active) {
+      advanceRafaleTriggerPastCollectedSugarcane();
+    }
 
     state.sugarcanes = remainingSugarcanes;
   }
@@ -3104,7 +3115,7 @@
     updateDirtPatches(deltaSeconds);
     updatePlayerSurface();
     const surfaceMaxSpeed = currentSurfaceMaxSpeed();
-    const targetSpeed = state.tier5Active ? TIER_5_CONFIG.speedKmh : (braking ? Math.min(BRAKE_SPEED, surfaceMaxSpeed) : surfaceMaxSpeed);
+    const targetSpeed = state.tier5Active ? TIER_5_CONFIG.gameplaySpeedKmh : (braking ? Math.min(BRAKE_SPEED, surfaceMaxSpeed) : surfaceMaxSpeed);
     const speedChange = targetSpeed > state.speed ? ACCELERATION : (playerIsOnDirt() ? DIRT_DECELERATION : BRAKE_DECELERATION);
     const airborne = playerIsAirborne();
     const direction = airborne || gameplayControlsLocked ? 0 : (input.steerRight() ? 1 : 0) - (input.steerLeft() ? 1 : 0);

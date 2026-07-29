@@ -20,67 +20,26 @@
       <div id="instructionsScreen" class="menu-screen instructions-screen" hidden>
         <div class="instructions-panel">
           <h2>HOW TO PLAY</h2>
-          <section>
-            <h3>OBJECTIVE</h3>
-            <p>Drive as far as possible, avoid obstacles, collect sugarcane, upgrade the car and achieve the highest score.</p>
+          <section class="instructions-section">
+            <h3>WHAT IS THIS GAME</h3>
+            <p>Formula E100 is an endless arcade highway game. Drive as far as possible, avoid obstacles, collect sugarcane, upgrade your vehicle, and build the highest score across Easy, Hard, and Realism modes.</p>
           </section>
-          <section class="instructions-grid">
-            <h3>CONTROLS</h3>
-            <div><strong>A / LEFT ARROW</strong><span>Steer left</span></div>
-            <div><strong>D / RIGHT ARROW</strong><span>Steer right</span></div>
-            <div><strong>S / DOWN ARROW</strong><span>Brake or decelerate</span></div>
-            <div><strong>SPACE</strong><span>Use one earned jump charge</span></div>
-            <div><strong>M</strong><span>Mute or unmute music</span></div>
-            <div><strong>R</strong><span>Restart after game over</span></div>
-            <div><strong>ESC</strong><span>Open gameplay menu or return where supported</span></div>
-          </section>
-          <section class="instructions-columns">
-            <div>
-              <h3>DIFFICULTIES</h3>
-              <p><strong>EASY</strong> Four-lane road with same-direction traffic.</p>
-              <p><strong>HARD</strong> Four-lane tarmac with two same-direction lanes and two oncoming lanes.</p>
-              <p><strong>REALISM</strong> Narrow two-lane tarmac with drivable dirt roads on both sides. Dirt reduces speed and makes steering unstable. Dirt-road traffic may travel in either direction.</p>
+          <section class="instructions-section">
+            <h3>HOW TO PLAY</h3>
+            <div class="instructions-controls">
+              <div><strong>A / LEFT ARROW</strong><span>Steer left</span></div>
+              <div><strong>D / RIGHT ARROW</strong><span>Steer right</span></div>
+              <div><strong>S / DOWN ARROW</strong><span>Brake or decelerate</span></div>
+              <div><strong>SPACE</strong><span>Use an earned jump</span></div>
+              <div><strong>ESC</strong><span>Open Continue / Return to Menu</span></div>
+              <div><strong>R</strong><span>Restart after game over</span></div>
+              <div><strong>M</strong><span>Mute or unmute music</span></div>
             </div>
-            <div>
-              <h3>OBSTACLES</h3>
-              <p>Avoid cars, rickshaws, trucks, humans, cows and chai tapris. Touching most gameplay obstacles causes immediate game over.</p>
-              <p><strong>TIER 2 AND TIER 4</strong> Hitting a human does not end the run, but your current speed drops by 20%.</p>
-            </div>
-          </section>
-          <section class="instructions-columns">
-            <div>
-              <h3>SUGARCANE</h3>
-              <p>Collect sugarcane to upgrade the car.</p>
-              <p><strong>ALL DIFFICULTIES</strong> Tier 2: 10 sugarcanes, Tier 3: 20 sugarcanes, Tier 4: 30 sugarcanes</p>
-            </div>
-            <div>
-              <h3>SPEED TIERS</h3>
-              <p>Tier 1: 80 km/h</p>
-              <p>Tier 2: 100 km/h</p>
-              <p>Tier 3: 150 km/h</p>
-              <p>Tier 4: 250 km/h</p>
-            </div>
-          </section>
-          <section>
-            <h3>JUMP</h3>
-            <p>Every 25 sugarcanes earns one jump. Press SPACE during gameplay to jump over traffic, humans, cows and chai tapris. You cannot steer or collect sugarcane while airborne.</p>
-          </section>
-          <section>
-            <h3>PAUSE MENU</h3>
-            <p><strong>ESC</strong> opens Continue / Return to menu. In Realism, the run continues behind the menu.</p>
-          </section>
-          <section>
-            <h3>TIER 5</h3>
-            <p>Collect 40 sugarcanes to activate the Rafale for five seconds. It flies at Mach 1, disables steering, flies over obstacles, cannot collect sugarcane, and scores at the Tier 1 rate.</p>
-          </section>
-          <section>
-            <h3>AUDIO</h3>
-            <p>Gameplay music loops continuously during each run.</p>
-            <p><strong>M</strong> Mute or unmute music.</p>
-          </section>
-          <section>
-            <h3>SCORING</h3>
-            <p>Score increases through distance travelled, sugarcane collected and time maintained at maximum tier speed.</p>
+            <p>Avoid cars, rickshaws, trucks, humans, cows, and chai tapris. Most impacts end the run. Tier 2 and Tier 4 cars can survive hitting a human, but lose 20% of their current speed.</p>
+            <p>Collect sugarcane to upgrade your car. Every 10 sugarcanes unlocks the next permanent tier. Every 25 sugarcanes earns one jump. You cannot steer or collect sugarcane while airborne.</p>
+            <p>After reaching Tier 4, every additional 10 sugarcanes activates the Rafale for 3 seconds. During this period, the aircraft flies over obstacles at Mach 1, but cannot steer or collect sugarcane.</p>
+            <p>Your score increases through distance travelled, sugarcane collected, and time maintained at maximum speed.</p>
+            <p>In Realism mode, opening the gameplay menu does not pause the run.</p>
           </section>
           <div class="back-help">ESC / BACKSPACE</div>
           <button id="instructionsBackButton" class="menu-option back-option" type="button">BACK</button>
@@ -138,10 +97,10 @@
       </div>
     </main>
 
-  <script src="src/config.js?v=tier5-menu-20260729"></script>
-  <script src="src/audio.js?v=tier5-menu-20260729"></script>
-    <script src="src/input.js?v=tier5-menu-20260729"></script>
-    <script src="src/render.js?v=tier5-menu-20260729"></script>
-    <script src="src/game.js?v=tier5-menu-20260729"></script>
+  <script src="src/config.js?v=tier5-recurring-20260729"></script>
+  <script src="src/audio.js?v=tier5-recurring-20260729"></script>
+    <script src="src/input.js?v=tier5-recurring-20260729"></script>
+    <script src="src/render.js?v=tier5-recurring-20260729"></script>
+    <script src="src/game.js?v=tier5-recurring-20260729"></script>
   </body>
 </html>
