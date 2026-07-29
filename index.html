@@ -32,7 +32,7 @@
             <div><strong>SPACE</strong><span>Use one earned jump charge</span></div>
             <div><strong>M</strong><span>Mute or unmute music</span></div>
             <div><strong>R</strong><span>Restart after game over</span></div>
-            <div><strong>ESC</strong><span>Return to the previous menu where supported</span></div>
+            <div><strong>ESC</strong><span>Open gameplay menu or return where supported</span></div>
           </section>
           <section class="instructions-columns">
             <div>
@@ -64,6 +64,14 @@
           <section>
             <h3>JUMP</h3>
             <p>Every 25 sugarcanes earns one jump. Press SPACE during gameplay to jump over traffic, humans, cows and chai tapris. You cannot steer or collect sugarcane while airborne.</p>
+          </section>
+          <section>
+            <h3>PAUSE MENU</h3>
+            <p><strong>ESC</strong> opens Continue / Return to menu. In Realism, the run continues behind the menu.</p>
+          </section>
+          <section>
+            <h3>TIER 5</h3>
+            <p>Collect 40 sugarcanes to activate the Rafale for five seconds. It flies at Mach 1, disables steering, flies over obstacles, cannot collect sugarcane, and scores at the Tier 1 rate.</p>
           </section>
           <section>
             <h3>AUDIO</h3>
@@ -110,6 +118,17 @@
         <div id="soundHud">Sound: On</div>
         <div id="cheatHud" hidden></div>
       </div>
+      <div id="gameplayMenu" class="gameplay-menu" hidden>
+        <div class="gameplay-menu-panel">
+          <h2>GAME MENU</h2>
+          <div id="gameplayMenuWarning" class="gameplay-menu-warning" hidden>
+            <div>REALISM MODE</div>
+            <div>THE GAME CONTINUES</div>
+          </div>
+          <button class="gameplay-menu-option is-selected" type="button" data-gameplay-menu-option="continue">CONTINUE</button>
+          <button class="gameplay-menu-option" type="button" data-gameplay-menu-option="return">RETURN TO MENU</button>
+        </div>
+      </div>
       <div id="gameOverMessage" class="game-over-message" hidden>
         <div>GAME OVER</div>
         <div id="finalScoreMessage">Final score: 0</div>
@@ -119,10 +138,10 @@
       </div>
     </main>
 
-  <script src="src/config.js?v=cheats-20260729"></script>
-  <script src="src/audio.js?v=cheats-20260729"></script>
-    <script src="src/input.js?v=cheats-20260729"></script>
-    <script src="src/render.js?v=cheats-20260729"></script>
-    <script src="src/game.js?v=cheats-20260729"></script>
+  <script src="src/config.js?v=tier5-menu-20260729"></script>
+  <script src="src/audio.js?v=tier5-menu-20260729"></script>
+    <script src="src/input.js?v=tier5-menu-20260729"></script>
+    <script src="src/render.js?v=tier5-menu-20260729"></script>
+    <script src="src/game.js?v=tier5-menu-20260729"></script>
   </body>
 </html>

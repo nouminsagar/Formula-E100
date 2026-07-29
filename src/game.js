@@ -18,6 +18,9 @@
   const difficultyScreen = document.getElementById("difficultyScreen");
   const cheatConfirm = document.getElementById("cheatConfirm");
   const cheatPendingStatus = document.getElementById("cheatPendingStatus");
+  const gameplayMenu = document.getElementById("gameplayMenu");
+  const gameplayMenuWarning = document.getElementById("gameplayMenuWarning");
+  const gameplayMenuOptionButtons = Array.prototype.slice.call(document.querySelectorAll("[data-gameplay-menu-option]"));
   const introOptionButtons = Array.prototype.slice.call(document.querySelectorAll("[data-intro-option]"));
   const difficultyOptionButtons = Array.prototype.slice.call(document.querySelectorAll("[data-difficulty]"));
   const instructionsBackButton = document.getElementById("instructionsBackButton");
@@ -382,6 +385,25 @@
     retryRecoveryDuration: 0.50,
     retryMessageDuration: 1.50,
   };
+  const NETA_VEHICLE_CONFIG = {
+    effectiveTier: 1,
+    maxSpeedKmh: 80,
+  };
+  const NETA_QUIT_CONFIG = {
+    requiredPresses: 20,
+    maxGapSeconds: 1,
+  };
+  const TIER_5_CONFIG = {
+    triggerSugarcanes: 40,
+    durationSeconds: 5,
+    speedKmh: 1235,
+    scoreSpeedKmh: 80,
+    fullSpeedPointsPerSecond: 2,
+  };
+  const GAMEPLAY_MENU_CONFIG = {
+    options: ["continue", "return"],
+    defaultIndex: 0,
+  };
 
   const state = {
     screen: SCREEN.intro,
@@ -470,6 +492,16 @@
     retryUsed: false,
     retryRecoveryTimer: 0,
     retryMessageTimer: 0,
+    netaQuitPressCount: 0,
+    netaQuitTimer: 0,
+    tier5TriggeredThisRun: false,
+    tier5Active: false,
+    tier5ElapsedSeconds: 0,
+    tier5SavedTier: null,
+    tier5SavedSpeed: 0,
+    tier5SavedX: 0.5,
+    gameplayMenuOpen: false,
+    gameplayMenuSelectionIndex: GAMEPLAY_MENU_CONFIG.defaultIndex,
     debugHitboxes: false,
     restartWasDown: false,
     lastTime: performance.now(),
@@ -495,6 +527,34 @@
     return state.difficulty || DIFFICULTIES.easy;
   }
 
+  function netaActive() {
+    return !!(state.activeRunCheats && state.activeRunCheats.neta);
+  }
+
+  function tierByNumber(number) {
+    return PLAYER_TIERS[Math.max(1, Math.min(4, number)) - 1] || PLAYER_TIERS[0];
+  }
+
+  function effectivePlayerTier() {
+    if (netaActive()) {
+      return tierByNumber(NETA_VEHICLE_CONFIG.effectiveTier);
+    }
+
+    return state.playerTier || PLAYER_TIERS[0];
+  }
+
+  function effectiveTierMaxSpeed() {
+    return netaActive() ? NETA_VEHICLE_CONFIG.maxSpeedKmh : effectivePlayerTier().maxSpeed;
+  }
+
+  function worldTravelSpeedKmh() {
+    return state.tier5Active ? TIER_5_CONFIG.speedKmh : state.speed;
+  }
+
+  function scoreDistanceSpeedKmh() {
+    return state.tier5Active ? TIER_5_CONFIG.scoreSpeedKmh : state.speed;
+  }
+
   function trafficSpawnDelay() {
     const range = TRAFFIC_SPAWN_DELAY_RANGE;
     const baseDelay = range.min + Math.random() * (range.max - range.min);
@@ -507,11 +567,11 @@
   }
 
   function sugarcaneSpawnDelay() {
-    return SUGARCANE_SPAWN_INTERVALS[state.playerTier.id] || SUGARCANE_SPAWN_INTERVALS.tier1;
+    return SUGARCANE_SPAWN_INTERVALS[effectivePlayerTier().id] || SUGARCANE_SPAWN_INTERVALS.tier1;
   }
 
   function oncomingTierMultiplier() {
-    return MOVEMENT_CONFIG.oncomingTierMultipliers[state.playerTier.id] || MOVEMENT_CONFIG.oncomingTierMultipliers.tier1;
+    return MOVEMENT_CONFIG.oncomingTierMultipliers[effectivePlayerTier().id] || MOVEMENT_CONFIG.oncomingTierMultipliers.tier1;
   }
 
   function kmhToWorldUnits(speedKmh) {
@@ -530,6 +590,15 @@
 
   function worldVisualSpeed(speedKmh) {
     return speedCurveRate(speedKmh, MOVEMENT_CONFIG.visualSpeedCurve) * MOVEMENT_CONFIG.parallax.road;
+  }
+
+  function gameplayWorldVisualSpeed() {
+    if (!state.tier5Active) {
+      return worldVisualSpeed(state.speed);
+    }
+
+    return worldVisualSpeed(MOVEMENT_CONFIG.visualSpeedCurve.maxReferenceSpeedKmh) *
+      (TIER_5_CONFIG.speedKmh / MOVEMENT_CONFIG.visualSpeedCurve.maxReferenceSpeedKmh);
   }
 
   function sameDirectionArcadeApproach(speedKmh) {
@@ -556,7 +625,9 @@
   }
 
   function normalTrafficRelativeWorldSpeed(direction) {
-    return direction === "oncoming" ? oncomingArcadeClosing(state.speed) : sameDirectionArcadeApproach(state.speed);
+    const speed = worldTravelSpeedKmh();
+
+    return direction === "oncoming" ? oncomingArcadeClosing(speed) : sameDirectionArcadeApproach(speed);
   }
 
   function decelerationSameDirectionApproach() {
@@ -718,7 +789,7 @@
   }
 
   function beginJump() {
-    if (playerIsAirborne() || availableJumpCharges() <= 0) {
+    if (state.tier5Active || playerIsAirborne() || availableJumpCharges() <= 0) {
       return false;
     }
 
@@ -766,26 +837,83 @@
     }
   }
 
+  function playerHasObstacleImmunity() {
+    return playerIsAirborne() || state.tier5Active;
+  }
+
+  function beginTier5() {
+    if (netaActive() || state.tier5TriggeredThisRun || state.tier5Active) {
+      return false;
+    }
+
+    state.tier5TriggeredThisRun = true;
+    state.tier5Active = true;
+    state.tier5ElapsedSeconds = 0;
+    state.tier5SavedTier = state.playerTier;
+    state.tier5SavedSpeed = state.speed;
+    state.tier5SavedX = state.playerX;
+    state.speed = TIER_5_CONFIG.speedKmh;
+    state.playerX = state.tier5SavedX;
+    state.playerSteeringPose = 0;
+    state.dirtDriftCurrent = 0;
+    state.dirtDriftTarget = 0;
+
+    return true;
+  }
+
+  function endTier5() {
+    const savedTier = state.tier5SavedTier || determinePlayerTier(state.sugarcaneCount);
+    const savedSpeed = Number.isFinite(state.tier5SavedSpeed) ? state.tier5SavedSpeed : 0;
+    const savedX = Number.isFinite(state.tier5SavedX) ? state.tier5SavedX : state.playerX;
+
+    state.tier5Active = false;
+    state.tier5ElapsedSeconds = 0;
+    state.playerTier = savedTier;
+    state.playerX = savedX;
+    updatePlayerSurface();
+    state.speed = clamp(savedSpeed, 0, currentSurfaceMaxSpeed());
+    state.tier5SavedTier = null;
+    state.tier5SavedSpeed = 0;
+    state.tier5SavedX = state.playerX;
+  }
+
+  function updateTier5(deltaSeconds) {
+    if (!state.tier5Active) {
+      return;
+    }
+
+    state.tier5ElapsedSeconds += deltaSeconds;
+    state.speed = TIER_5_CONFIG.speedKmh;
+    state.playerX = state.tier5SavedX;
+    state.playerSteeringPose = 0;
+    state.dirtDriftCurrent = 0;
+    state.dirtDriftTarget = 0;
+
+    if (state.tier5ElapsedSeconds >= TIER_5_CONFIG.durationSeconds) {
+      endTier5();
+    }
+  }
+
   function playerIsOnDirt() {
     return state.playerEffectiveSurface === "dirt";
   }
 
   function dirtSpeedMultiplier() {
-    return DIRT_SPEED_MULTIPLIERS[tierNumber(state.playerTier)] || DIRT_SPEED_MULTIPLIERS[1];
+    return DIRT_SPEED_MULTIPLIERS[tierNumber(effectivePlayerTier())] || DIRT_SPEED_MULTIPLIERS[1];
   }
 
   function dirtSteeringMultiplier() {
-    return DIRT_STEERING_MULTIPLIERS[tierNumber(state.playerTier)] || DIRT_STEERING_MULTIPLIERS[1];
+    return DIRT_STEERING_MULTIPLIERS[tierNumber(effectivePlayerTier())] || DIRT_STEERING_MULTIPLIERS[1];
   }
 
   function dirtDriftStrength() {
-    return DIRT_DRIFT_STRENGTHS[tierNumber(state.playerTier)] || DIRT_DRIFT_STRENGTHS[1];
+    return DIRT_DRIFT_STRENGTHS[tierNumber(effectivePlayerTier())] || DIRT_DRIFT_STRENGTHS[1];
   }
 
   function currentSurfaceMaxSpeed() {
     return playerIsOnDirt()
-      ? state.playerTier.maxSpeed * dirtSpeedMultiplier()
-      : state.playerTier.maxSpeed;
+      ? effectiveTierMaxSpeed() * dirtSpeedMultiplier()
+      : effectiveTierMaxSpeed();
   }
 
   function resetDirtDrivingState() {
@@ -929,7 +1057,7 @@
     }
 
     state.dirtPatches.forEach(function (patch) {
-      patch.distance -= kmhToWorldUnits(state.speed) * deltaSeconds;
+      patch.distance -= kmhToWorldUnits(worldTravelSpeedKmh()) * deltaSeconds;
       patch.active = patch.distance + patch.length >= DIRT_PATCH_CONFIG.removeDistance;
     });
 
@@ -998,6 +1126,7 @@
     state.retryUsed = false;
     state.retryRecoveryTimer = 0;
     state.retryMessageTimer = 0;
+    resetNetaQuitState();
   }
 
   function copyPendingCheatsToRun() {
@@ -1008,7 +1137,32 @@
     state.retryUsed = false;
     state.retryRecoveryTimer = 0;
     state.retryMessageTimer = 0;
+    resetNetaQuitState();
     clearPendingCheats();
+  }
+
+  function resetNetaQuitState() {
+    state.netaQuitPressCount = 0;
+    state.netaQuitTimer = 0;
+  }
+
+  function resetTier5State() {
+    state.tier5TriggeredThisRun = false;
+    state.tier5Active = false;
+    state.tier5ElapsedSeconds = 0;
+    state.tier5SavedTier = null;
+    state.tier5SavedSpeed = 0;
+    state.tier5SavedX = 0.5;
+  }
+
+  function resetGameplayMenuState() {
+    state.gameplayMenuOpen = false;
+    state.gameplayMenuSelectionIndex = GAMEPLAY_MENU_CONFIG.defaultIndex;
+    updateGameplayMenu();
+  }
+
+  function gameplayMenuPauses() {
+    return state.gameplayMenuOpen && currentDifficulty().id !== "realism";
   }
 
   function cheatList(cheats) {
@@ -1058,6 +1212,13 @@
     if (state.retryMessageTimer > 0) {
       state.retryMessageTimer = Math.max(0, state.retryMessageTimer - deltaSeconds);
     }
+
+    if (state.netaQuitTimer > 0) {
+      state.netaQuitTimer = Math.max(0, state.netaQuitTimer - deltaSeconds);
+      if (state.netaQuitTimer === 0) {
+        resetNetaQuitState();
+      }
+    }
   }
 
   function activatePendingCheat(name) {
@@ -1095,6 +1256,33 @@
     }
   }
 
+  function handleNetaQuitKey(event) {
+    if (
+      state.screen !== SCREEN.gameplay ||
+      !netaActive() ||
+      state.gameplayMenuOpen ||
+      state.gameOver ||
+      event.repeat
+    ) {
+      return;
+    }
+
+    if (event.code === "KeyQ" || event.key.toLowerCase() === "q") {
+      state.netaQuitPressCount += 1;
+      state.netaQuitTimer = NETA_QUIT_CONFIG.maxGapSeconds;
+
+      if (state.netaQuitPressCount >= NETA_QUIT_CONFIG.requiredPresses) {
+        resetNetaQuitState();
+        showGameOver("neta_manual_exit");
+      }
+      return;
+    }
+
+    if (event.key && event.key.length === 1) {
+      resetNetaQuitState();
+    }
+  }
+
   function resetNetaObstacleState() {
     state.traffic.forEach(clearNetaObjectState);
     allDirtTraffic().forEach(clearNetaObjectState);
@@ -1127,6 +1315,9 @@
     resetJumpState();
     resetHumanMessage();
     resetNetaObstacleState();
+    resetNetaQuitState();
+    resetTier5State();
+    resetGameplayMenuState();
   }
 
   function updateIntroSelection() {
@@ -1135,10 +1326,64 @@
     });
   }
 
+  function updateGameplayMenu() {
+    if (gameplayMenu) {
+      gameplayMenu.hidden = !state.gameplayMenuOpen;
+    }
+
+    if (gameplayMenuWarning) {
+      gameplayMenuWarning.hidden = !(state.gameplayMenuOpen && currentDifficulty().id === "realism");
+    }
+
+    gameplayMenuOptionButtons.forEach(function (button, index) {
+      button.classList.toggle("is-selected", index === state.gameplayMenuSelectionIndex);
+    });
+  }
+
+  function openGameplayMenu() {
+    if (state.screen !== SCREEN.gameplay || state.gameOver) {
+      return;
+    }
+
+    state.gameplayMenuOpen = true;
+    state.gameplayMenuSelectionIndex = GAMEPLAY_MENU_CONFIG.defaultIndex;
+    resetNetaQuitState();
+    if (window.RacingInput && window.RacingInput.clearHeldControls) {
+      window.RacingInput.clearHeldControls();
+    }
+    updateGameplayMenu();
+  }
+
+  function closeGameplayMenu() {
+    state.gameplayMenuOpen = false;
+    state.gameplayMenuSelectionIndex = GAMEPLAY_MENU_CONFIG.defaultIndex;
+    if (window.RacingInput && window.RacingInput.clearHeldControls) {
+      window.RacingInput.clearHeldControls();
+    }
+    updateGameplayMenu();
+  }
+
+  function activateGameplayMenuSelection() {
+    const option = GAMEPLAY_MENU_CONFIG.options[state.gameplayMenuSelectionIndex] || "continue";
+
+    if (option === "return") {
+      resetGameplayMenuState();
+      showDifficultySelection();
+      if (window.RacingInput) {
+        window.RacingInput.clearMenuRequests();
+        window.RacingInput.clearDifficultyRequests();
+      }
+      return;
+    }
+
+    closeGameplayMenu();
+  }
+
   function hideMenuScreens() {
     introScreen.hidden = true;
     instructionsScreen.hidden = true;
     difficultyScreen.hidden = true;
+    resetGameplayMenuState();
   }
 
   function showIntro() {
@@ -1201,10 +1446,13 @@
     }
   }
 
-  function showGameOver() {
+  function showGameOver(reason) {
     const wasCheatRun = state.isCheatRun;
     state.screen = SCREEN.gameOver;
     state.gameOver = true;
+    resetGameplayMenuState();
+    resetTier5State();
+    resetNetaQuitState();
     state.jumpState = JUMP_STATES.grounded;
     state.jumpElapsed = 0;
     state.jumpArcAmount = 0;
@@ -1212,10 +1460,15 @@
     state.finalScore = state.liveScore;
     finalScoreMessage.textContent = "Final score: " + state.finalScore;
     if (cheatGameOverMessage) {
-      cheatGameOverMessage.innerHTML = wasCheatRun
-        ? "CHEAT RUN<br>SCORE NOT ELIGIBLE FOR LEADERBOARD"
-        : "";
-      cheatGameOverMessage.hidden = !wasCheatRun;
+      if (reason === "neta_manual_exit") {
+        cheatGameOverMessage.innerHTML = "NETA RUN ENDED<br>SCORE NOT ELIGIBLE FOR LEADERBOARD";
+        cheatGameOverMessage.hidden = false;
+      } else {
+        cheatGameOverMessage.innerHTML = wasCheatRun
+          ? "CHEAT RUN<br>SCORE NOT ELIGIBLE FOR LEADERBOARD"
+          : "";
+        cheatGameOverMessage.hidden = !wasCheatRun;
+      }
     }
     clearActiveCheats();
     gameHud.hidden = true;
@@ -1250,6 +1503,9 @@
     state.playerBrakingVisual = false;
     resetDirtDrivingState();
     state.roadScroll = 0;
+    resetTier5State();
+    resetGameplayMenuState();
+    resetNetaQuitState();
     state.traffic = [];
     state.trafficSpawnTimer = trafficSpawnDelay();
     resetDirtTraffic();
@@ -1326,7 +1582,36 @@
     window.RacingInput.clearDifficultyRequests();
   });
 
+  gameplayMenuOptionButtons.forEach(function (button, index) {
+    button.addEventListener("click", function () {
+      unlockAudio();
+      if (!state.gameplayMenuOpen) {
+        return;
+      }
+      state.gameplayMenuSelectionIndex = index;
+      updateGameplayMenu();
+      activateGameplayMenuSelection();
+      window.RacingInput.clearMenuRequests();
+      window.RacingInput.clearDifficultyRequests();
+    });
+  });
+
   window.addEventListener("keydown", handleDifficultyCheatKey);
+  window.addEventListener("keydown", handleNetaQuitKey);
+  window.addEventListener("blur", function () {
+    resetNetaQuitState();
+    if (window.RacingInput && window.RacingInput.clearHeldControls) {
+      window.RacingInput.clearHeldControls();
+    }
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      resetNetaQuitState();
+      if (window.RacingInput && window.RacingInput.clearHeldControls) {
+        window.RacingInput.clearHeldControls();
+      }
+    }
+  });
 
   function laneIsSafeForSpawn(lane) {
     return state.traffic.every(function (traffic) {
@@ -1443,10 +1728,6 @@
     }
 
     return distanceGap / approachSpeed;
-  }
-
-  function netaActive() {
-    return !!(state.activeRunCheats && state.activeRunCheats.neta);
   }
 
   function netaTrafficApproachSpeed(traffic) {
@@ -1848,7 +2129,7 @@
       return;
     }
 
-    state.crossingObstacle.distance -= kmhToWorldUnits(state.speed) * deltaSeconds;
+    state.crossingObstacle.distance -= kmhToWorldUnits(worldTravelSpeedKmh()) * deltaSeconds;
     state.crossingObstacle.depth = clamp(1 - state.crossingObstacle.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
     if (updateNetaCrossingAvoidance(state.crossingObstacle, deltaSeconds)) {
       state.crossingObstacle.crossingProgress = clamp(state.crossingObstacle.crossingProgress, 0, 1);
@@ -1900,7 +2181,7 @@
       return false;
     }
 
-    const timeToPlayer = obstacleTimeToPlayer(obstacle.distance, kmhToWorldUnits(state.speed));
+    const timeToPlayer = obstacleTimeToPlayer(obstacle.distance, kmhToWorldUnits(worldTravelSpeedKmh()));
     const clearance = (obstacle.type === "cow" ? 0.12 : 0.07) + netaAvoidanceMargin();
 
     return timeToPlayer <= CHEAT_CONFIG.netaLookaheadSeconds &&
@@ -1928,7 +2209,7 @@
     obstacle.netaAvoidTarget = target;
     obstacle.crossing = moveTowards(obstacle.crossing, target, speed * deltaSeconds);
 
-    if (Math.abs(obstacle.crossing - state.playerX) < 0.055 && obstacleTimeToPlayer(obstacle.distance, kmhToWorldUnits(state.speed)) < 0.35) {
+    if (Math.abs(obstacle.crossing - state.playerX) < 0.055 && obstacleTimeToPlayer(obstacle.distance, kmhToWorldUnits(worldTravelSpeedKmh())) < 0.35) {
       obstacle.netaBypass = true;
       obstacle.collidable = false;
     }
@@ -1941,7 +2222,7 @@
       return false;
     }
 
-    const timeToPlayer = obstacleTimeToPlayer(cow.distance, kmhToWorldUnits(state.speed));
+    const timeToPlayer = obstacleTimeToPlayer(cow.distance, kmhToWorldUnits(worldTravelSpeedKmh()));
 
     return timeToPlayer <= CHEAT_CONFIG.netaLookaheadSeconds &&
       Math.abs(cow.position - state.playerX) < 0.16 + netaAvoidanceMargin();
@@ -1965,7 +2246,7 @@
     cow.position = moveTowards(cow.position, target, CHEAT_CONFIG.netaLateralSpeeds.standingCow * deltaSeconds);
     cow.position = clamp(cow.position, bounds.min, bounds.max);
 
-    if (Math.abs(cow.position - state.playerX) < 0.08 && obstacleTimeToPlayer(cow.distance, kmhToWorldUnits(state.speed)) < 0.35) {
+    if (Math.abs(cow.position - state.playerX) < 0.08 && obstacleTimeToPlayer(cow.distance, kmhToWorldUnits(worldTravelSpeedKmh())) < 0.35) {
       cow.netaBypass = true;
       cow.collidable = false;
     }
@@ -1976,7 +2257,7 @@
       return false;
     }
 
-    const timeToPlayer = obstacleTimeToPlayer(tapri.distance, kmhToWorldUnits(state.speed));
+    const timeToPlayer = obstacleTimeToPlayer(tapri.distance, kmhToWorldUnits(worldTravelSpeedKmh()));
     const edgePosition = tapriEdgePosition(tapri.side);
 
     return timeToPlayer <= CHEAT_CONFIG.netaLookaheadSeconds &&
@@ -1992,14 +2273,14 @@
     tapri.netaAvoiding = true;
     tapri.intrusion = Math.max(0, (tapri.intrusion || 0) - CHEAT_CONFIG.netaLateralSpeeds.tapriIntrusionPerSecond * deltaSeconds);
 
-    if (tapri.intrusion > 0.04 && obstacleTimeToPlayer(tapri.distance, kmhToWorldUnits(state.speed)) < 0.35) {
+    if (tapri.intrusion > 0.04 && obstacleTimeToPlayer(tapri.distance, kmhToWorldUnits(worldTravelSpeedKmh())) < 0.35) {
       tapri.netaBypass = true;
       tapri.collidable = false;
     }
   }
 
   function tapriSpawnDistance() {
-    const minByReactionTime = kmhToWorldUnits(Math.max(state.speed, 80)) * TAPRI_CONFIG.minReactionSeconds;
+    const minByReactionTime = kmhToWorldUnits(Math.max(worldTravelSpeedKmh(), 80)) * TAPRI_CONFIG.minReactionSeconds;
 
     return clamp(
       Math.max(randomInRange(TAPRI_CONFIG.spawnDistanceRange), minByReactionTime),
@@ -2096,7 +2377,7 @@
     }
 
     state.tapris.forEach(function (tapri) {
-      tapri.distance -= kmhToWorldUnits(state.speed) * deltaSeconds;
+      tapri.distance -= kmhToWorldUnits(worldTravelSpeedKmh()) * deltaSeconds;
       tapri.depth = clamp(1 - tapri.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
       updateNetaTapriAvoidance(tapri, deltaSeconds);
 
@@ -2219,7 +2500,7 @@
     }
 
     state.standingCows.forEach(function (cow) {
-      cow.distance -= kmhToWorldUnits(state.speed) * deltaSeconds;
+      cow.distance -= kmhToWorldUnits(worldTravelSpeedKmh()) * deltaSeconds;
       cow.depth = clamp(1 - cow.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
       cow.animationTime += deltaSeconds;
       updateNetaStandingCowAvoidance(cow, deltaSeconds);
@@ -2322,7 +2603,7 @@
     }
 
     state.sugarcanes.forEach(function (sugarcane) {
-      sugarcane.distance -= kmhToWorldUnits(state.speed) * deltaSeconds;
+      sugarcane.distance -= kmhToWorldUnits(worldTravelSpeedKmh()) * deltaSeconds;
       sugarcane.depth = clamp(1 - sugarcane.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
     });
 
@@ -2340,10 +2621,16 @@
   }
 
   function updateScore(deltaSeconds, braking) {
-    state.distanceMetres += (state.speed / 3.6) * deltaSeconds;
+    state.distanceMetres += (scoreDistanceSpeedKmh() / 3.6) * deltaSeconds;
 
-    if (!braking && state.playerEffectiveSurface === PLAYER_SURFACES.tarmac && state.speed >= state.playerTier.maxSpeed - FULL_SPEED_TOLERANCE) {
-      state.fullSpeedScore += state.playerTier.fullSpeedPointsPerSecond * deltaSeconds;
+    if (state.tier5Active) {
+      state.fullSpeedScore += TIER_5_CONFIG.fullSpeedPointsPerSecond * deltaSeconds;
+      state.liveScore = calculateLiveScore();
+      return;
+    }
+
+    if (!braking && state.playerEffectiveSurface === PLAYER_SURFACES.tarmac && state.speed >= effectiveTierMaxSpeed() - FULL_SPEED_TOLERANCE) {
+      state.fullSpeedScore += effectivePlayerTier().fullSpeedPointsPerSecond * deltaSeconds;
     }
 
     state.liveScore = calculateLiveScore();
@@ -2362,6 +2649,12 @@
   }
 
   function updatePlayerTier() {
+    if (netaActive()) {
+      state.playerTier = PLAYER_TIERS[0];
+      state.sugarcaneSpawnAccumulator = Math.min(state.sugarcaneSpawnAccumulator, sugarcaneSpawnDelay());
+      return;
+    }
+
     const nextTier = determinePlayerTier(state.sugarcaneCount);
 
     state.playerTier = nextTier;
@@ -2369,7 +2662,7 @@
   }
 
   function updateHud() {
-    speedHud.textContent = "Speed: " + Math.round(state.speed) + " km/h";
+    speedHud.textContent = state.tier5Active ? "Speed: MACH 1" : "Speed: " + Math.round(state.speed) + " km/h";
     scoreHud.textContent = "Score: " + state.liveScore;
     sugarcaneHud.textContent = "Sugarcane: " + state.sugarcaneCount;
     jumpHud.textContent = "Jumps: " + availableJumpCharges();
@@ -2385,6 +2678,10 @@
 
       if (state.activeRunCheats.retry) {
         parts.push("RETRY: " + (state.retryUsed ? "USED" : "READY"));
+      }
+
+      if (state.netaQuitPressCount > 0) {
+        parts.push("ENDING NETA RUN: " + state.netaQuitPressCount + " / " + NETA_QUIT_CONFIG.requiredPresses);
       }
 
       cheatHud.textContent = parts.join(" | ");
@@ -2488,7 +2785,7 @@
   }
 
   function checkCollision() {
-    if (playerIsAirborne() || state.retryRecoveryTimer > 0) {
+    if (playerHasObstacleImmunity() || state.retryRecoveryTimer > 0) {
       return;
     }
 
@@ -2595,7 +2892,7 @@
   }
 
   function checkSugarcaneCollection() {
-    if (playerIsAirborne()) {
+    if (playerIsAirborne() || state.tier5Active) {
       return;
     }
 
@@ -2610,10 +2907,54 @@
 
       state.sugarcaneCount += 1;
       updatePlayerTier();
+      if (
+        !netaActive() &&
+        !state.tier5TriggeredThisRun &&
+        state.sugarcaneCount >= TIER_5_CONFIG.triggerSugarcanes
+      ) {
+        beginTier5();
+      }
       state.liveScore = calculateLiveScore();
     });
 
     state.sugarcanes = remainingSugarcanes;
+  }
+
+  function handleGameplayMenuInput(input) {
+    if (!state.gameplayMenuOpen) {
+      return false;
+    }
+
+    input.consumeDifficulty();
+    input.consumeRestart();
+    input.consumeJump();
+    input.consumeDebugToggle();
+    input.consumeNetaQuit && input.consumeNetaQuit();
+
+    if (input.consumeMenuUp()) {
+      state.gameplayMenuSelectionIndex = (state.gameplayMenuSelectionIndex + gameplayMenuOptionButtons.length - 1) % gameplayMenuOptionButtons.length;
+      updateGameplayMenu();
+    }
+
+    if (input.consumeMenuDown()) {
+      state.gameplayMenuSelectionIndex = (state.gameplayMenuSelectionIndex + 1) % gameplayMenuOptionButtons.length;
+      updateGameplayMenu();
+    }
+
+    if (input.consumeSelection()) {
+      closeGameplayMenu();
+      input.clearMenuRequests();
+      return true;
+    }
+
+    input.consumeBack();
+
+    if (input.consumeMenuActivate()) {
+      activateGameplayMenuSelection();
+      return true;
+    }
+
+    return false;
   }
 
   function update(deltaSeconds) {
@@ -2718,30 +3059,55 @@
       return;
     }
 
+    if (state.gameplayMenuOpen) {
+      handleGameplayMenuInput(input);
+
+      if (state.screen !== SCREEN.gameplay) {
+        return;
+      }
+
+      if (gameplayMenuPauses()) {
+        state.restartWasDown = restartIsDown;
+        return;
+      }
+    } else if (input.consumeSelection()) {
+      openGameplayMenu();
+      input.consumeBack();
+      input.clearMenuRequests();
+
+      if (gameplayMenuPauses()) {
+        state.restartWasDown = restartIsDown;
+        return;
+      }
+    }
+
     input.consumeDifficulty();
-    input.consumeSelection();
     input.consumeBack();
     input.consumeMenuUp();
     input.consumeMenuDown();
     input.consumeMenuActivate();
+    input.consumeNetaQuit && input.consumeNetaQuit();
 
     if (input.consumeDebugToggle()) {
       state.debugHitboxes = !state.debugHitboxes;
     }
 
-    if (input.consumeJump()) {
+    if (!state.gameplayMenuOpen && !state.tier5Active && input.consumeJump()) {
       beginJump();
+    } else {
+      input.consumeJump();
     }
 
     state.restartWasDown = restartIsDown;
-    const braking = input.braking();
+    const gameplayControlsLocked = state.gameplayMenuOpen || state.tier5Active;
+    const braking = gameplayControlsLocked ? false : input.braking();
     updateDirtPatches(deltaSeconds);
     updatePlayerSurface();
     const surfaceMaxSpeed = currentSurfaceMaxSpeed();
-    const targetSpeed = braking ? Math.min(BRAKE_SPEED, surfaceMaxSpeed) : surfaceMaxSpeed;
+    const targetSpeed = state.tier5Active ? TIER_5_CONFIG.speedKmh : (braking ? Math.min(BRAKE_SPEED, surfaceMaxSpeed) : surfaceMaxSpeed);
     const speedChange = targetSpeed > state.speed ? ACCELERATION : (playerIsOnDirt() ? DIRT_DECELERATION : BRAKE_DECELERATION);
     const airborne = playerIsAirborne();
-    const direction = airborne ? 0 : (input.steerRight() ? 1 : 0) - (input.steerLeft() ? 1 : 0);
+    const direction = airborne || gameplayControlsLocked ? 0 : (input.steerRight() ? 1 : 0) - (input.steerLeft() ? 1 : 0);
     const previousSpeedKmh = state.speed;
 
     updatePlayerVisualState(deltaSeconds, direction, braking);
@@ -2755,10 +3121,12 @@
     const playerXBounds = window.RacingRender.playerXBounds
       ? window.RacingRender.playerXBounds(canvas, state)
       : { min: 0.08, max: 0.92 };
-    const steeringMultiplier = !airborne && playerIsOnDirt() ? dirtSteeringMultiplier() : 1;
-    const dirtDrift = airborne ? 0 : updateDirtDrift(deltaSeconds, surfaceMaxSpeed);
+    const steeringMultiplier = !airborne && !gameplayControlsLocked && playerIsOnDirt() ? dirtSteeringMultiplier() : 1;
+    const dirtDrift = airborne || gameplayControlsLocked ? 0 : updateDirtDrift(deltaSeconds, surfaceMaxSpeed);
 
-    if (airborne && state.playerJumpLockedX !== null) {
+    if (state.tier5Active) {
+      state.playerX = clamp(state.tier5SavedX, playerXBounds.min, playerXBounds.max);
+    } else if (airborne && state.playerJumpLockedX !== null) {
       state.playerX = clamp(state.playerJumpLockedX, playerXBounds.min, playerXBounds.max);
     } else {
       state.playerX = clamp(
@@ -2770,7 +3138,7 @@
     updatePlayerSurface();
 
     updateDecelerationState(deltaSeconds, previousSpeedKmh);
-    state.roadScroll += worldVisualSpeed(state.speed) * deltaSeconds;
+    state.roadScroll += gameplayWorldVisualSpeed() * deltaSeconds;
     updateTraffic(deltaSeconds);
     updateDirtTraffic(deltaSeconds);
     removeOvertakenTraffic();
@@ -2779,6 +3147,7 @@
     updateTapris(deltaSeconds);
     updateSugarcane(deltaSeconds);
     updateJump(deltaSeconds);
+    updateTier5(deltaSeconds);
     updateHumanMessage(deltaSeconds);
     checkSugarcaneCollection();
     updateScore(deltaSeconds, braking);

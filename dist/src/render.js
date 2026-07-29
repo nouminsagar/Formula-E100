@@ -125,6 +125,46 @@
     width: 0.62,
     height: 0.68,
   };
+  const NETA_SOURCE_CROP = {
+    x: 17,
+    y: 8,
+    width: 636,
+    height: 655,
+  };
+  const NETA_VISIBLE_ASPECT_RATIO = NETA_SOURCE_CROP.width / NETA_SOURCE_CROP.height;
+  const NETA_COLLISION_RATIO = {
+    width: 0.58,
+    height: 0.64,
+  };
+  const NETA_BEACON_GLOW_CONFIG = {
+    xRatio: 0.5,
+    yRatio: 0.065,
+    cycleSeconds: 1,
+    flashDuration: 0.20,
+    minOpacity: 0.08,
+    maxOpacity: 0.60,
+    radiusWidthRatio: 0.18,
+  };
+  const RAFALE_SOURCE_CROP = {
+    x: 21,
+    y: 25,
+    width: 908,
+    height: 631,
+  };
+  const RAFALE_VISIBLE_ASPECT_RATIO = RAFALE_SOURCE_CROP.width / RAFALE_SOURCE_CROP.height;
+  const RAFALE_RENDER_WIDTH_RATIO = 0.42;
+  const RAFALE_MAX_WIDTH_RATIO = 0.48;
+  const RAFALE_BOTTOM_Y_RATIO = 0.73;
+  const RAFALE_GLOW_CONFIG = {
+    frequencyHz: 8,
+    minIntensity: 0.45,
+    maxIntensity: 1,
+    radiusWidthRatio: 0.13,
+    exhausts: [
+      { xRatio: 0.455, yRatio: 0.73 },
+      { xRatio: 0.545, yRatio: 0.73 },
+    ],
+  };
   const TRAFFIC_COLLISION_RATIOS = {
     car: {
       width: 0.62,
@@ -358,6 +398,10 @@
     },
     sugarcane: "sugarcane.png",
     tapri: "tapri.png",
+    special: {
+      neta: "neta-car.png",
+      rafale: "rafale.png",
+    },
   };
   const sprites = {};
 
@@ -396,6 +440,8 @@
 
     preloadSprite("sugarcane", SPRITE_SOURCES.sugarcane);
     preloadSprite("tapri", SPRITE_SOURCES.tapri);
+    preloadSprite("special.neta", SPRITE_SOURCES.special.neta);
+    preloadSprite("special.rafale", SPRITE_SOURCES.special.rafale);
   }
 
   function spriteIsReady(sprite) {
@@ -648,7 +694,19 @@
     return (peakAnchorY - normalBottomY) * state.jumpArcAmount;
   }
 
-  function playerBounds(width, height, playerX, tier, difficulty, state) {
+  function playerVehicleMode(state) {
+    if (state && state.activeRunCheats && state.activeRunCheats.neta) {
+      return "neta";
+    }
+
+    if (state && state.tier5Active) {
+      return "rafale";
+    }
+
+    return "normal";
+  }
+
+  function normalPlayerBounds(width, height, playerX, tier, difficulty, state) {
     const road = roadAtDepth(width, height, PLAYER_DEPTH, difficulty);
     const profile = playerProfile(tier);
     const multipliers = playerRenderMultipliers(tier);
@@ -670,6 +728,44 @@
     bounds.y += playerJumpVerticalOffset(height, state, bounds);
 
     return bounds;
+  }
+
+  function playerBounds(width, height, playerX, tier, difficulty, state) {
+    const mode = playerVehicleMode(state);
+    const road = roadAtDepth(width, height, PLAYER_DEPTH, difficulty);
+    const x = lerp(road.left, road.right, playerX);
+
+    if (mode === "neta") {
+      const tierOneBounds = normalPlayerBounds(width, height, playerX, PLAYER_PROFILES.tier1, difficulty, null);
+      const carHeight = tierOneBounds.height;
+      const carWidth = carHeight * NETA_VISIBLE_ASPECT_RATIO;
+      const baseBottomY = tierOneBounds.y + tierOneBounds.height;
+      const bounds = {
+        x: x - carWidth * 0.5,
+        y: baseBottomY - carHeight,
+        width: carWidth,
+        height: carHeight,
+      };
+
+      bounds.y += playerJumpVerticalOffset(height, state, bounds);
+
+      return bounds;
+    }
+
+    if (mode === "rafale") {
+      const carWidth = Math.min(width * RAFALE_MAX_WIDTH_RATIO, Math.max(260, road.width * RAFALE_RENDER_WIDTH_RATIO));
+      const carHeight = carWidth / RAFALE_VISIBLE_ASPECT_RATIO;
+      const bottomY = height * RAFALE_BOTTOM_Y_RATIO;
+
+      return {
+        x: x - carWidth * 0.5,
+        y: bottomY - carHeight,
+        width: carWidth,
+        height: carHeight,
+      };
+    }
+
+    return normalPlayerBounds(width, height, playerX, tier, difficulty, state);
   }
 
   function playerRenderedHeight(width, height, tier, difficulty) {
@@ -917,8 +1013,11 @@
     }
   }
 
-  function playerCollisionBounds(width, height, playerX, tier, difficulty) {
-    return bottomCenteredBounds(playerBounds(width, height, playerX, tier, difficulty), PLAYER_COLLISION_RATIO.width, PLAYER_COLLISION_RATIO.height);
+  function playerCollisionBounds(width, height, playerX, tier, difficulty, state) {
+    const mode = playerVehicleMode(state);
+    const ratios = mode === "neta" ? NETA_COLLISION_RATIO : PLAYER_COLLISION_RATIO;
+
+    return bottomCenteredBounds(playerBounds(width, height, playerX, tier, difficulty, state), ratios.width, ratios.height);
   }
 
   function trafficCollisionBounds(width, height, traffic, laneCount, difficulty) {
@@ -1534,6 +1633,107 @@
     ctx.restore();
   }
 
+  function drawCroppedVehicleSprite(ctx, sprite, crop, bounds, pose, fallbackDraw, glowDraw) {
+    const centerX = bounds.x + bounds.width * 0.5;
+    const bottomY = bounds.y + bounds.height;
+
+    ctx.save();
+    ctx.translate(centerX, bottomY);
+    ctx.translate(pose.horizontalOffset || 0, pose.verticalOffset || 0);
+    ctx.rotate(degreesToRadians(pose.rotationDegrees || 0));
+
+    if (glowDraw) {
+      glowDraw(ctx, bounds);
+    }
+
+    if (spriteIsReady(sprite)) {
+      ctx.drawImage(
+        sprite.image,
+        crop.x,
+        crop.y,
+        crop.width,
+        crop.height,
+        -bounds.width * 0.5,
+        -bounds.height,
+        bounds.width,
+        bounds.height
+      );
+    } else {
+      fallbackDraw(ctx, {
+        x: -bounds.width * 0.5,
+        y: -bounds.height,
+        width: bounds.width,
+        height: bounds.height,
+      });
+    }
+
+    ctx.restore();
+  }
+
+  function visualClockSeconds(state) {
+    if (typeof performance !== "undefined" && performance.now) {
+      return performance.now() / 1000;
+    }
+
+    return state && state.playerAnimationTime ? state.playerAnimationTime : 0;
+  }
+
+  function drawNetaBeaconGlow(ctx, bounds, state) {
+    const config = NETA_BEACON_GLOW_CONFIG;
+    const time = visualClockSeconds(state);
+    const cycleProgress = (time % config.cycleSeconds) / config.cycleSeconds;
+    const flashAmount = cycleProgress < config.flashDuration / config.cycleSeconds
+      ? 1 - cycleProgress / (config.flashDuration / config.cycleSeconds)
+      : 0;
+    const opacity = config.minOpacity + (config.maxOpacity - config.minOpacity) * flashAmount;
+    const centerX = -bounds.width * 0.5 + bounds.width * config.xRatio;
+    const centerY = -bounds.height + bounds.height * config.yRatio;
+    const radius = bounds.width * config.radiusWidthRatio;
+    const glow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+
+    glow.addColorStop(0, "rgba(255, 58, 48, " + opacity.toFixed(3) + ")");
+    glow.addColorStop(0.45, "rgba(214, 47, 47, " + (opacity * 0.55).toFixed(3) + ")");
+    glow.addColorStop(1, "rgba(214, 47, 47, 0)");
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawRafaleAfterburnerGlow(ctx, bounds, state) {
+    const config = RAFALE_GLOW_CONFIG;
+    const time = visualClockSeconds(state);
+    const wave = (Math.sin(time * config.frequencyHz * Math.PI * 2) + 1) * 0.5;
+    const intensity = config.minIntensity + (config.maxIntensity - config.minIntensity) * wave;
+    const radius = bounds.width * config.radiusWidthRatio;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    config.exhausts.forEach(function (exhaust) {
+      const centerX = -bounds.width * 0.5 + bounds.width * exhaust.xRatio;
+      const centerY = -bounds.height + bounds.height * exhaust.yRatio;
+      const glow = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+
+      glow.addColorStop(0, "rgba(255, 245, 120, " + (0.74 * intensity).toFixed(3) + ")");
+      glow.addColorStop(0.38, "rgba(255, 132, 20, " + (0.58 * intensity).toFixed(3) + ")");
+      glow.addColorStop(1, "rgba(255, 88, 0, 0)");
+
+      ctx.save();
+      ctx.translate(centerX, centerY + radius * 0.35);
+      ctx.scale(0.72, 1.55);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
   function drawPlaceholderPlayerBounds(ctx, bounds, tier) {
     const profile = playerProfile(tier);
     const carWidth = bounds.width;
@@ -1557,7 +1757,29 @@
     const tier = state.playerTier;
     const tierId = tier && tier.id ? tier.id : "tier1";
     const bounds = playerBounds(width, height, playerX, tier, state.difficulty, state);
-    const pose = playerVehiclePose(state, bounds);
+    const mode = playerVehicleMode(state);
+    const pose = mode === "rafale"
+      ? { horizontalOffset: 0, verticalOffset: 0, rotationDegrees: 0 }
+      : playerVehiclePose(state, bounds);
+
+    if (mode === "neta") {
+      drawCroppedVehicleSprite(ctx, sprites["special.neta"], NETA_SOURCE_CROP, bounds, pose, function (context, fallbackBounds) {
+        drawPlaceholderPlayerBounds(context, fallbackBounds, PLAYER_PROFILES.tier1);
+      }, function (context, fallbackBounds) {
+        drawNetaBeaconGlow(context, fallbackBounds, state);
+      });
+      return;
+    }
+
+    if (mode === "rafale") {
+      drawCroppedVehicleSprite(ctx, sprites["special.rafale"], RAFALE_SOURCE_CROP, bounds, pose, function (context, fallbackBounds) {
+        context.fillStyle = "#d8d4bd";
+        context.fillRect(fallbackBounds.x, fallbackBounds.y + fallbackBounds.height * 0.32, fallbackBounds.width, fallbackBounds.height * 0.32);
+      }, function (context, fallbackBounds) {
+        drawRafaleAfterburnerGlow(context, fallbackBounds, state);
+      });
+      return;
+    }
 
     drawVehicleSprite(ctx, sprites["player." + tierId], bounds, pose, function (context, fallbackBounds) {
       drawPlaceholderPlayerBounds(context, fallbackBounds, tier);
@@ -1871,7 +2093,7 @@
     ctx.fillText("player depth " + PLAYER_DEPTH.toFixed(2), playerDepthRoad.left + 6, playerDepthRoad.y - 6);
     ctx.restore();
 
-    drawDebugRect(ctx, playerCollisionBounds(width, height, state.playerX, state.playerTier, state.difficulty), "#fffb4d");
+    drawDebugRect(ctx, playerCollisionBounds(width, height, state.playerX, state.playerTier, state.difficulty, state), "#fffb4d");
     state.traffic.forEach(function (traffic) {
       const bounds = trafficCollisionBounds(width, height, traffic, laneCount, state.difficulty);
 
@@ -1924,7 +2146,7 @@
       const difficulty = state.difficulty;
       const corridor = drivingCorridorAtDepth(width, height, PLAYER_DEPTH, difficulty);
       const road = corridor.road;
-      const playerHitbox = playerCollisionBounds(width, height, 0.5, state.playerTier, difficulty);
+      const playerHitbox = playerCollisionBounds(width, height, 0.5, state.playerTier, difficulty, state);
       const halfPlayerHitboxRatio = playerHitbox.width * 0.5 / road.width;
 
       return {
@@ -1999,7 +2221,7 @@
       }
 
       return {
-        player: playerCollisionBounds(width, height, state.playerX, state.playerTier, state.difficulty),
+        player: playerCollisionBounds(width, height, state.playerX, state.playerTier, state.difficulty, state),
         traffic: state.traffic.map(function (traffic) {
           return trafficCollisionBounds(width, height, traffic, laneCount, state.difficulty);
         }),
@@ -2096,7 +2318,7 @@
 
       renderItems.push({
         type: "player",
-        depth: state.jumpArcAmount > 0 ? 2 : PLAYER_DEPTH,
+        depth: state.jumpArcAmount > 0 || state.tier5Active ? 2 : PLAYER_DEPTH,
       });
 
       renderItems.sort(function (a, b) {

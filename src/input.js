@@ -14,6 +14,7 @@
   let jumpRequested = false;
   let muteRequested = false;
   let debugToggleRequested = false;
+  let netaQuitRequested = false;
   const handledKeys = new Set([
     "ArrowLeft",
     "ArrowRight",
@@ -29,6 +30,7 @@
     "KeyD",
     "KeyH",
     "KeyM",
+    "KeyQ",
     "KeyR",
     "KeyS",
     "KeyW",
@@ -68,6 +70,8 @@
         debugToggleRequested = true;
       } else if (event.code === "KeyM") {
         muteRequested = true;
+      } else if (event.code === "KeyQ") {
+        netaQuitRequested = true;
       } else if (event.code === "ArrowUp" || event.code === "KeyW") {
         menuUpRequested = true;
       } else if (event.code === "ArrowDown" || event.code === "KeyS") {
@@ -163,6 +167,11 @@
       jumpRequested = false;
       return requested;
     },
+    consumeNetaQuit: function () {
+      const requested = netaQuitRequested;
+      netaQuitRequested = false;
+      return requested;
+    },
     clearMenuRequests: function () {
       menuUpRequested = false;
       menuDownRequested = false;
@@ -170,6 +179,14 @@
       jumpRequested = false;
       backRequested = false;
       selectionRequested = false;
+    },
+    clearHeldControls: function () {
+      activeKeys.delete("ArrowLeft");
+      activeKeys.delete("ArrowRight");
+      activeKeys.delete("ArrowDown");
+      activeKeys.delete("KeyA");
+      activeKeys.delete("KeyD");
+      activeKeys.delete("KeyS");
     },
     clearDifficultyRequests: function () {
       easyRequested = false;
