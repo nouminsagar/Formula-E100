@@ -1816,6 +1816,34 @@
     ctx.restore();
   }
 
+  function drawRetryMessage(ctx, width, height, state) {
+    if (!state.retryMessageTimer || state.retryMessageTimer <= 0) {
+      return;
+    }
+
+    const player = playerBounds(width, height, state.playerX, state.playerTier, state.difficulty, state);
+    const messageWidth = 190;
+    const messageHeight = 46;
+    let x = player.x + player.width * 0.5 - messageWidth * 0.5;
+    let y = player.y + player.height + 14;
+
+    x = clamp(x, 10, width - messageWidth - 10);
+    y = clamp(y, height * 0.36, height - messageHeight - 14);
+
+    ctx.save();
+    ctx.fillStyle = "rgba(24, 28, 34, 0.9)";
+    ctx.strokeStyle = "#f0c86a";
+    ctx.lineWidth = 2;
+    ctx.fillRect(x, y, messageWidth, messageHeight);
+    ctx.strokeRect(x, y, messageWidth, messageHeight);
+    ctx.fillStyle = "#f7f3e8";
+    ctx.font = "700 15px 'Courier New', 'Lucida Console', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("RETRY USED", x + messageWidth * 0.5, y + 18);
+    ctx.fillText("SECOND CHANCE", x + messageWidth * 0.5, y + 36);
+    ctx.restore();
+  }
+
   function drawDebugRect(ctx, bounds, color) {
     ctx.save();
     ctx.strokeStyle = color;
@@ -2097,6 +2125,7 @@
         }
       });
       drawSpeechBubble(ctx, width, height, state);
+      drawRetryMessage(ctx, width, height, state);
       drawDebugHitboxes(ctx, width, height, state, laneCount);
     },
   };

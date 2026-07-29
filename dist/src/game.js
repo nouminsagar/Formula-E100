@@ -9,11 +9,15 @@
   const sugarcaneHud = document.getElementById("sugarcaneHud");
   const jumpHud = document.getElementById("jumpHud");
   const soundHud = document.getElementById("soundHud");
+  const cheatHud = document.getElementById("cheatHud");
   const gameOverMessage = document.getElementById("gameOverMessage");
   const finalScoreMessage = document.getElementById("finalScoreMessage");
+  const cheatGameOverMessage = document.getElementById("cheatGameOverMessage");
   const introScreen = document.getElementById("introScreen");
   const instructionsScreen = document.getElementById("instructionsScreen");
   const difficultyScreen = document.getElementById("difficultyScreen");
+  const cheatConfirm = document.getElementById("cheatConfirm");
+  const cheatPendingStatus = document.getElementById("cheatPendingStatus");
   const introOptionButtons = Array.prototype.slice.call(document.querySelectorAll("[data-intro-option]"));
   const difficultyOptionButtons = Array.prototype.slice.call(document.querySelectorAll("[data-difficulty]"));
   const instructionsBackButton = document.getElementById("instructionsBackButton");
@@ -356,6 +360,28 @@
     obstacleCollisionEnabledWhileAirborne: false,
     sugarcaneCollectionEnabledWhileAirborne: false,
   };
+  const CHEAT_CODES = {
+    neta: "neta",
+    retry: "retry",
+  };
+  const CHEAT_CONFIG = {
+    inputBufferMaxLength: 12,
+    inputTimeout: 2,
+    activationConfirmationDuration: 1.5,
+    netaLookaheadSeconds: 1.6,
+    netaAvoidanceMarginLaneRatio: 0.14,
+    netaLateralSpeeds: {
+      car: 1.10,
+      rickshaw: 1.25,
+      truck: 0.85,
+      crossingHuman: 0.55,
+      crossingCow: 0.42,
+      standingCow: 0.55,
+      tapriIntrusionPerSecond: 1.25,
+    },
+    retryRecoveryDuration: 0.50,
+    retryMessageDuration: 1.50,
+  };
 
   const state = {
     screen: SCREEN.intro,
@@ -427,6 +453,23 @@
     returnBlendSameDirectionStart: 0,
     returnBlendOncomingStart: 0,
     gameOver: false,
+    cheatBuffer: "",
+    cheatBufferTimer: 0,
+    cheatConfirmText: "",
+    cheatConfirmTimer: 0,
+    pendingCheats: {
+      neta: false,
+      retry: false,
+    },
+    activeRunCheats: {
+      neta: false,
+      retry: false,
+    },
+    isCheatRun: false,
+    retryAvailable: false,
+    retryUsed: false,
+    retryRecoveryTimer: 0,
+    retryMessageTimer: 0,
     debugHitboxes: false,
     restartWasDown: false,
     lastTime: performance.now(),
@@ -933,6 +976,145 @@
     state.humanMessage.timer = 0;
   }
 
+  function clearCheatInput() {
+    state.cheatBuffer = "";
+    state.cheatBufferTimer = 0;
+  }
+
+  function clearPendingCheats() {
+    state.pendingCheats.neta = false;
+    state.pendingCheats.retry = false;
+    state.cheatConfirmText = "";
+    state.cheatConfirmTimer = 0;
+    clearCheatInput();
+    updateCheatDifficultyStatus();
+  }
+
+  function clearActiveCheats() {
+    state.activeRunCheats.neta = false;
+    state.activeRunCheats.retry = false;
+    state.isCheatRun = false;
+    state.retryAvailable = false;
+    state.retryUsed = false;
+    state.retryRecoveryTimer = 0;
+    state.retryMessageTimer = 0;
+  }
+
+  function copyPendingCheatsToRun() {
+    state.activeRunCheats.neta = state.pendingCheats.neta;
+    state.activeRunCheats.retry = state.pendingCheats.retry;
+    state.isCheatRun = state.activeRunCheats.neta || state.activeRunCheats.retry;
+    state.retryAvailable = !!state.activeRunCheats.retry;
+    state.retryUsed = false;
+    state.retryRecoveryTimer = 0;
+    state.retryMessageTimer = 0;
+    clearPendingCheats();
+  }
+
+  function cheatList(cheats) {
+    const active = [];
+
+    if (cheats.neta) {
+      active.push("NETA");
+    }
+
+    if (cheats.retry) {
+      active.push("RETRY");
+    }
+
+    return active;
+  }
+
+  function updateCheatDifficultyStatus() {
+    if (cheatConfirm) {
+      cheatConfirm.textContent = state.cheatConfirmTimer > 0 ? state.cheatConfirmText : "";
+      cheatConfirm.hidden = !cheatConfirm.textContent;
+    }
+
+    if (cheatPendingStatus) {
+      const active = cheatList(state.pendingCheats);
+      cheatPendingStatus.textContent = active.length ? "CHEATS: " + active.join(" + ") : "";
+      cheatPendingStatus.hidden = active.length === 0;
+    }
+  }
+
+  function updateCheatTimers(deltaSeconds) {
+    if (state.cheatBufferTimer > 0) {
+      state.cheatBufferTimer = Math.max(0, state.cheatBufferTimer - deltaSeconds);
+      if (state.cheatBufferTimer === 0) {
+        state.cheatBuffer = "";
+      }
+    }
+
+    if (state.cheatConfirmTimer > 0) {
+      state.cheatConfirmTimer = Math.max(0, state.cheatConfirmTimer - deltaSeconds);
+      updateCheatDifficultyStatus();
+    }
+
+    if (state.retryRecoveryTimer > 0) {
+      state.retryRecoveryTimer = Math.max(0, state.retryRecoveryTimer - deltaSeconds);
+    }
+
+    if (state.retryMessageTimer > 0) {
+      state.retryMessageTimer = Math.max(0, state.retryMessageTimer - deltaSeconds);
+    }
+  }
+
+  function activatePendingCheat(name) {
+    if (!state.pendingCheats[name]) {
+      state.pendingCheats[name] = true;
+    }
+
+    state.cheatConfirmText = name === "neta" ? "NETA ACTIVATED" : "RETRY ACTIVATED";
+    state.cheatConfirmTimer = CHEAT_CONFIG.activationConfirmationDuration;
+    clearCheatInput();
+    updateCheatDifficultyStatus();
+  }
+
+  function handleDifficultyCheatKey(event) {
+    if (state.screen !== SCREEN.difficulty || event.repeat) {
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      clearCheatInput();
+      return;
+    }
+
+    if (event.ctrlKey || event.altKey || event.metaKey || event.key.length !== 1 || !/^[a-z]$/i.test(event.key)) {
+      return;
+    }
+
+    state.cheatBuffer = (state.cheatBuffer + event.key.toLowerCase()).slice(-CHEAT_CONFIG.inputBufferMaxLength);
+    state.cheatBufferTimer = CHEAT_CONFIG.inputTimeout;
+
+    if (state.cheatBuffer.endsWith(CHEAT_CODES.neta)) {
+      activatePendingCheat("neta");
+    } else if (state.cheatBuffer.endsWith(CHEAT_CODES.retry)) {
+      activatePendingCheat("retry");
+    }
+  }
+
+  function resetNetaObstacleState() {
+    state.traffic.forEach(clearNetaObjectState);
+    allDirtTraffic().forEach(clearNetaObjectState);
+    state.standingCows.forEach(clearNetaObjectState);
+    state.tapris.forEach(clearNetaObjectState);
+    if (state.crossingObstacle) {
+      clearNetaObjectState(state.crossingObstacle);
+    }
+  }
+
+  function clearNetaObjectState(object) {
+    if (!object) {
+      return;
+    }
+
+    object.netaAvoiding = false;
+    object.netaBypass = false;
+    object.netaAvoidTarget = null;
+  }
+
   function clearTransientRunState() {
     state.traffic = [];
     resetDirtTraffic();
@@ -944,6 +1126,7 @@
     resetDirtDrivingState();
     resetJumpState();
     resetHumanMessage();
+    resetNetaObstacleState();
   }
 
   function updateIntroSelection() {
@@ -963,6 +1146,8 @@
     state.difficulty = null;
     state.gameOver = false;
     clearTransientRunState();
+    clearPendingCheats();
+    clearActiveCheats();
     state.introSelectionIndex = clamp(state.introSelectionIndex, 0, introOptionButtons.length - 1);
     hideMenuScreens();
     gameHud.hidden = true;
@@ -979,6 +1164,8 @@
     state.difficulty = null;
     state.gameOver = false;
     clearTransientRunState();
+    clearPendingCheats();
+    clearActiveCheats();
     hideMenuScreens();
     gameHud.hidden = true;
     gameOverMessage.hidden = true;
@@ -993,6 +1180,8 @@
     state.difficulty = null;
     state.gameOver = false;
     clearTransientRunState();
+    clearPendingCheats();
+    clearActiveCheats();
     hideMenuScreens();
     gameHud.hidden = true;
     gameOverMessage.hidden = true;
@@ -1013,6 +1202,7 @@
   }
 
   function showGameOver() {
+    const wasCheatRun = state.isCheatRun;
     state.screen = SCREEN.gameOver;
     state.gameOver = true;
     state.jumpState = JUMP_STATES.grounded;
@@ -1021,6 +1211,13 @@
     state.playerJumpLockedX = null;
     state.finalScore = state.liveScore;
     finalScoreMessage.textContent = "Final score: " + state.finalScore;
+    if (cheatGameOverMessage) {
+      cheatGameOverMessage.innerHTML = wasCheatRun
+        ? "CHEAT RUN<br>SCORE NOT ELIGIBLE FOR LEADERBOARD"
+        : "";
+      cheatGameOverMessage.hidden = !wasCheatRun;
+    }
+    clearActiveCheats();
     gameHud.hidden = true;
     gameOverMessage.hidden = false;
     if (window.RacingAudio) {
@@ -1039,7 +1236,11 @@
     }
   }
 
-  function resetRun(restartTrack) {
+  function resetRun(restartTrack, preserveActiveCheats) {
+    if (!preserveActiveCheats) {
+      clearActiveCheats();
+    }
+
     state.speed = 0;
     state.playerX = 0.5;
     state.playerTier = PLAYER_TIERS[0];
@@ -1081,12 +1282,17 @@
     state.lastTime = performance.now();
     showGameplay(restartTrack);
     finalScoreMessage.textContent = "Final score: 0";
+    if (cheatGameOverMessage) {
+      cheatGameOverMessage.hidden = true;
+      cheatGameOverMessage.textContent = "";
+    }
     updateHud();
   }
 
   function startDifficulty(difficultyId) {
     state.difficulty = DIFFICULTIES[difficultyId];
-    resetRun(true);
+    copyPendingCheatsToRun();
+    resetRun(true, true);
   }
 
   introOptionButtons.forEach(function (button, index) {
@@ -1119,6 +1325,8 @@
     window.RacingInput.clearMenuRequests();
     window.RacingInput.clearDifficultyRequests();
   });
+
+  window.addEventListener("keydown", handleDifficultyCheatKey);
 
   function laneIsSafeForSpawn(lane) {
     return state.traffic.every(function (traffic) {
@@ -1223,6 +1431,103 @@
     return laneWeaveBounds(traffic.lane, difficulty.laneCount, traffic, TRAFFIC_WEAVE_CONFIG.realismLaneOffsetLimit);
   }
 
+  function playerDistanceFromSpawn() {
+    return 1 - window.RacingRender.playerDepth;
+  }
+
+  function obstacleTimeToPlayer(distance, approachSpeed) {
+    const distanceGap = distance - playerDistanceFromSpawn();
+
+    if (distanceGap < -0.02 || approachSpeed <= 0.0001) {
+      return Infinity;
+    }
+
+    return distanceGap / approachSpeed;
+  }
+
+  function netaActive() {
+    return !!(state.activeRunCheats && state.activeRunCheats.neta);
+  }
+
+  function netaTrafficApproachSpeed(traffic) {
+    const baseSpeed = effectiveTrafficRelativeWorldSpeed(traffic.direction);
+
+    if (!traffic.isDirtTraffic) {
+      return baseSpeed;
+    }
+
+    return baseSpeed * (traffic.direction === "oncoming"
+      ? DIRT_TRAFFIC_CONFIG.oncomingSpeedMultiplier
+      : DIRT_TRAFFIC_CONFIG.sameDirectionSpeedMultiplier);
+  }
+
+  function netaAvoidanceMargin() {
+    return CHEAT_CONFIG.netaAvoidanceMarginLaneRatio / Math.max(1, currentDifficulty().laneCount);
+  }
+
+  function netaTrafficBounds(traffic) {
+    const difficulty = currentDifficulty();
+    const margin = trafficHalfWidthMargin(traffic);
+
+    if (traffic.isDirtTraffic) {
+      const laneWidth = 1 / Math.max(1, difficulty.laneCount);
+      const dirtWidth = laneWidth * TRAFFIC_WEAVE_CONFIG.dirtRoadWidthRelativeToTarmacLane;
+      const center = traffic.side === "left"
+        ? -TRAFFIC_WEAVE_CONFIG.realismDirtRoadGapRatio - dirtWidth * 0.5
+        : 1 + TRAFFIC_WEAVE_CONFIG.realismDirtRoadGapRatio + dirtWidth * 0.5;
+      return {
+        left: center - dirtWidth * 0.5 + margin,
+        right: center + dirtWidth * 0.5 - margin,
+      };
+    }
+
+    if (difficulty.id === "hard") {
+      return trafficRegionBounds(traffic);
+    }
+
+    if (difficulty.id === "realism") {
+      return laneWeaveBounds(traffic.lane, difficulty.laneCount, traffic, 0.45);
+    }
+
+    return {
+      left: margin,
+      right: 1 - margin,
+    };
+  }
+
+  function trafficIsNetaThreat(traffic) {
+    const timeToPlayer = obstacleTimeToPlayer(traffic.distance, netaTrafficApproachSpeed(traffic));
+    const clearance = trafficHalfWidthMargin(traffic) + 0.07 + netaAvoidanceMargin();
+
+    return timeToPlayer <= CHEAT_CONFIG.netaLookaheadSeconds &&
+      Math.abs(trafficLogicalX(traffic) - state.playerX) < clearance;
+  }
+
+  function updateNetaTrafficAvoidance(traffic, deltaSeconds) {
+    if (!netaActive() || traffic.collidable === false || !trafficIsNetaThreat(traffic)) {
+      traffic.netaAvoiding = false;
+      return false;
+    }
+
+    const bounds = netaTrafficBounds(traffic);
+    const currentX = trafficLogicalX(traffic);
+    const targetX = Math.abs(bounds.left - state.playerX) > Math.abs(bounds.right - state.playerX)
+      ? bounds.left
+      : bounds.right;
+    const lateralSpeed = CHEAT_CONFIG.netaLateralSpeeds[traffic.type] || CHEAT_CONFIG.netaLateralSpeeds.car;
+
+    traffic.netaAvoiding = true;
+    traffic.weaveTargetX = targetX;
+    traffic.logicalX = moveTowards(currentX, targetX, lateralSpeed * deltaSeconds);
+    traffic.logicalX = clamp(traffic.logicalX, bounds.left, bounds.right);
+
+    if (Math.abs(traffic.logicalX - state.playerX) < trafficHalfWidthMargin(traffic) + 0.04) {
+      traffic.netaBypass = true;
+    }
+
+    return true;
+  }
+
   function chooseWithinLaneTarget(traffic, lane) {
     const difficulty = currentDifficulty();
     const bounds = laneWeaveBounds(lane, difficulty.laneCount, traffic, difficulty.id === "realism" ? TRAFFIC_WEAVE_CONFIG.realismLaneOffsetLimit : 0.42);
@@ -1302,6 +1607,10 @@
   }
 
   function updateTrafficWeave(traffic, deltaSeconds) {
+    if (updateNetaTrafficAvoidance(traffic, deltaSeconds)) {
+      return;
+    }
+
     if (!traffic.weaveEnabled) {
       traffic.logicalX = trafficLogicalX(traffic);
       return;
@@ -1541,12 +1850,16 @@
 
     state.crossingObstacle.distance -= kmhToWorldUnits(state.speed) * deltaSeconds;
     state.crossingObstacle.depth = clamp(1 - state.crossingObstacle.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
-    state.crossingObstacle.crossingProgress += deltaSeconds / state.crossingObstacle.fullCrossingDuration;
-    state.crossingObstacle.crossing = lerp(
-      state.crossingObstacle.crossingStart,
-      state.crossingObstacle.crossingEnd,
-      state.crossingObstacle.crossingProgress
-    );
+    if (updateNetaCrossingAvoidance(state.crossingObstacle, deltaSeconds)) {
+      state.crossingObstacle.crossingProgress = clamp(state.crossingObstacle.crossingProgress, 0, 1);
+    } else {
+      state.crossingObstacle.crossingProgress += deltaSeconds / state.crossingObstacle.fullCrossingDuration;
+      state.crossingObstacle.crossing = lerp(
+        state.crossingObstacle.crossingStart,
+        state.crossingObstacle.crossingEnd,
+        state.crossingObstacle.crossingProgress
+      );
+    }
     state.crossingObstacle.animationTime += deltaSeconds;
 
     if (
@@ -1580,6 +1893,109 @@
     state.tapris = [];
     state.tapriSpawnTimer = tapriSpawnDelay();
     state.nextTapriId = 1;
+  }
+
+  function crossingIsNetaThreat(obstacle) {
+    if (!obstacle || obstacle.netaBypass) {
+      return false;
+    }
+
+    const timeToPlayer = obstacleTimeToPlayer(obstacle.distance, kmhToWorldUnits(state.speed));
+    const clearance = (obstacle.type === "cow" ? 0.12 : 0.07) + netaAvoidanceMargin();
+
+    return timeToPlayer <= CHEAT_CONFIG.netaLookaheadSeconds &&
+      Math.abs(obstacle.crossing - state.playerX) < clearance;
+  }
+
+  function updateNetaCrossingAvoidance(obstacle, deltaSeconds) {
+    if (!netaActive() || !crossingIsNetaThreat(obstacle)) {
+      if (obstacle) {
+        obstacle.netaAvoiding = false;
+      }
+      return false;
+    }
+
+    const leftTarget = -0.12;
+    const rightTarget = 1.12;
+    const target = Math.abs(leftTarget - state.playerX) > Math.abs(rightTarget - state.playerX)
+      ? leftTarget
+      : rightTarget;
+    const speed = obstacle.type === "cow"
+      ? CHEAT_CONFIG.netaLateralSpeeds.crossingCow
+      : CHEAT_CONFIG.netaLateralSpeeds.crossingHuman;
+
+    obstacle.netaAvoiding = true;
+    obstacle.netaAvoidTarget = target;
+    obstacle.crossing = moveTowards(obstacle.crossing, target, speed * deltaSeconds);
+
+    if (Math.abs(obstacle.crossing - state.playerX) < 0.055 && obstacleTimeToPlayer(obstacle.distance, kmhToWorldUnits(state.speed)) < 0.35) {
+      obstacle.netaBypass = true;
+      obstacle.collidable = false;
+    }
+
+    return true;
+  }
+
+  function standingCowIsNetaThreat(cow) {
+    if (!cow || cow.netaBypass) {
+      return false;
+    }
+
+    const timeToPlayer = obstacleTimeToPlayer(cow.distance, kmhToWorldUnits(state.speed));
+
+    return timeToPlayer <= CHEAT_CONFIG.netaLookaheadSeconds &&
+      Math.abs(cow.position - state.playerX) < 0.16 + netaAvoidanceMargin();
+  }
+
+  function updateNetaStandingCowAvoidance(cow, deltaSeconds) {
+    if (!netaActive() || !standingCowIsNetaThreat(cow)) {
+      cow.netaAvoiding = false;
+      return;
+    }
+
+    const bounds = window.RacingRender.standingCowXBounds
+      ? window.RacingRender.standingCowXBounds(canvas, state, cow.distance)
+      : { min: 0.06, max: 0.94 };
+    const target = Math.abs(bounds.min - state.playerX) > Math.abs(bounds.max - state.playerX)
+      ? bounds.min
+      : bounds.max;
+
+    cow.netaAvoiding = true;
+    cow.netaAvoidTarget = target;
+    cow.position = moveTowards(cow.position, target, CHEAT_CONFIG.netaLateralSpeeds.standingCow * deltaSeconds);
+    cow.position = clamp(cow.position, bounds.min, bounds.max);
+
+    if (Math.abs(cow.position - state.playerX) < 0.08 && obstacleTimeToPlayer(cow.distance, kmhToWorldUnits(state.speed)) < 0.35) {
+      cow.netaBypass = true;
+      cow.collidable = false;
+    }
+  }
+
+  function tapriIsNetaThreat(tapri) {
+    if (!tapri || tapri.netaBypass) {
+      return false;
+    }
+
+    const timeToPlayer = obstacleTimeToPlayer(tapri.distance, kmhToWorldUnits(state.speed));
+    const edgePosition = tapriEdgePosition(tapri.side);
+
+    return timeToPlayer <= CHEAT_CONFIG.netaLookaheadSeconds &&
+      Math.abs(edgePosition - state.playerX) < 0.24 + netaAvoidanceMargin();
+  }
+
+  function updateNetaTapriAvoidance(tapri, deltaSeconds) {
+    if (!netaActive() || !tapriIsNetaThreat(tapri)) {
+      tapri.netaAvoiding = false;
+      return;
+    }
+
+    tapri.netaAvoiding = true;
+    tapri.intrusion = Math.max(0, (tapri.intrusion || 0) - CHEAT_CONFIG.netaLateralSpeeds.tapriIntrusionPerSecond * deltaSeconds);
+
+    if (tapri.intrusion > 0.04 && obstacleTimeToPlayer(tapri.distance, kmhToWorldUnits(state.speed)) < 0.35) {
+      tapri.netaBypass = true;
+      tapri.collidable = false;
+    }
   }
 
   function tapriSpawnDistance() {
@@ -1682,6 +2098,7 @@
     state.tapris.forEach(function (tapri) {
       tapri.distance -= kmhToWorldUnits(state.speed) * deltaSeconds;
       tapri.depth = clamp(1 - tapri.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
+      updateNetaTapriAvoidance(tapri, deltaSeconds);
 
       if (tapri.depth > window.RacingRender.playerDepth) {
         tapri.collidable = false;
@@ -1805,6 +2222,7 @@
       cow.distance -= kmhToWorldUnits(state.speed) * deltaSeconds;
       cow.depth = clamp(1 - cow.distance / TRAFFIC_SPAWN_DISTANCE, 0.03, 1.12);
       cow.animationTime += deltaSeconds;
+      updateNetaStandingCowAvoidance(cow, deltaSeconds);
 
       if (cow.depth > window.RacingRender.playerDepth) {
         cow.collidable = false;
@@ -1958,6 +2376,20 @@
     if (soundHud) {
       soundHud.textContent = "Sound: " + (window.RacingAudio && window.RacingAudio.isMuted && window.RacingAudio.isMuted() ? "Off" : "On");
     }
+    if (cheatHud) {
+      const parts = [];
+
+      if (state.activeRunCheats.neta) {
+        parts.push("NETA");
+      }
+
+      if (state.activeRunCheats.retry) {
+        parts.push("RETRY: " + (state.retryUsed ? "USED" : "READY"));
+      }
+
+      cheatHud.textContent = parts.join(" | ");
+      cheatHud.hidden = parts.length === 0;
+    }
   }
 
   function updatePlayerVisualState(deltaSeconds, direction, braking) {
@@ -2012,20 +2444,72 @@
     state.humanMessage.timer = HUMAN_MESSAGE_DURATION;
   }
 
+  function clearObstacleAfterCheatImpact(obstacle, type) {
+    if (!obstacle) {
+      return;
+    }
+
+    obstacle.collidable = false;
+    obstacle.netaBypass = true;
+    obstacle.resolvedByCheat = true;
+
+    if (type === "crossing") {
+      state.crossingObstacle = null;
+      state.crossingSpawnTimer = crossingSpawnDelay();
+    } else if (type === "standingCow") {
+      state.standingCows = state.standingCows.filter(function (cow) {
+        return cow !== obstacle;
+      });
+    } else if (type === "tapri") {
+      obstacle.intrusion = 0;
+      obstacle.distance = Math.min(obstacle.distance, -0.02);
+    } else if (type === "traffic" || type === "dirtTraffic") {
+      obstacle.distance = Math.min(obstacle.distance, -0.02);
+    }
+  }
+
+  function resolveLethalImpact(obstacle, type) {
+    if (netaActive()) {
+      clearObstacleAfterCheatImpact(obstacle, type);
+      return true;
+    }
+
+    if (state.activeRunCheats.retry && state.retryAvailable) {
+      state.retryAvailable = false;
+      state.retryUsed = true;
+      state.retryRecoveryTimer = CHEAT_CONFIG.retryRecoveryDuration;
+      state.retryMessageTimer = CHEAT_CONFIG.retryMessageDuration;
+      clearObstacleAfterCheatImpact(obstacle, type);
+      return true;
+    }
+
+    showGameOver();
+    return false;
+  }
+
   function checkCollision() {
-    if (playerIsAirborne()) {
+    if (playerIsAirborne() || state.retryRecoveryTimer > 0) {
       return;
     }
 
     const bounds = window.RacingRender.getBounds(canvas, state);
     const visibleBounds = window.RacingRender.getVisibleBounds(canvas, state);
     const playerDepth = window.RacingRender.playerDepth;
+    let hitTrafficObject = null;
+    let hitDirtTrafficObject = null;
+    let hitStandingCowObject = null;
+    let hitTapriObject = null;
     const hitTraffic = bounds.traffic.some(function (trafficBounds, index) {
       const traffic = state.traffic[index];
       const depthDifference = playerDepth - traffic.depth;
       const trafficIsWithinCollisionApproach = depthDifference >= 0 && depthDifference <= TRAFFIC_COLLISION_DEPTH_TOLERANCE;
 
-      return traffic.collidable !== false && trafficIsWithinCollisionApproach && horizontalOverlap(bounds.player, trafficBounds);
+      if (traffic.collidable !== false && !traffic.netaBypass && trafficIsWithinCollisionApproach && horizontalOverlap(bounds.player, trafficBounds)) {
+        hitTrafficObject = traffic;
+        return true;
+      }
+
+      return false;
     });
     const dirtTraffic = allDirtTraffic();
     const hitDirtTraffic = bounds.dirtTraffic && bounds.dirtTraffic.some(function (trafficBounds, index) {
@@ -2033,27 +2517,46 @@
       const depthDifference = playerDepth - traffic.depth;
       const trafficIsWithinCollisionApproach = depthDifference >= 0 && depthDifference <= TRAFFIC_COLLISION_DEPTH_TOLERANCE;
 
-      return traffic.collidable !== false && trafficIsWithinCollisionApproach && horizontalOverlap(bounds.player, trafficBounds);
+      if (traffic.collidable !== false && !traffic.netaBypass && trafficIsWithinCollisionApproach && horizontalOverlap(bounds.player, trafficBounds)) {
+        hitDirtTrafficObject = traffic;
+        return true;
+      }
+
+      return false;
     });
     const hitStandingCow = bounds.standingCows && bounds.standingCows.some(function (cowBounds, index) {
       const cow = state.standingCows[index];
       const depthDifference = playerDepth - cow.depth;
       const cowIsWithinCollisionApproach = depthDifference >= 0 && depthDifference <= TRAFFIC_COLLISION_DEPTH_TOLERANCE;
 
-      return cow.collidable !== false && cowIsWithinCollisionApproach && horizontalOverlap(bounds.player, cowBounds);
+      if (cow.collidable !== false && !cow.netaBypass && cowIsWithinCollisionApproach && horizontalOverlap(bounds.player, cowBounds)) {
+        hitStandingCowObject = cow;
+        return true;
+      }
+
+      return false;
     });
     const hitTapri = bounds.tapris && bounds.tapris.some(function (tapriBounds, index) {
       const tapri = state.tapris[index];
       const depthDifference = playerDepth - tapri.depth;
       const tapriIsWithinCollisionApproach = depthDifference >= 0 && depthDifference <= TRAFFIC_COLLISION_DEPTH_TOLERANCE;
 
-      return tapri.collidable !== false && tapriIsWithinCollisionApproach && horizontalOverlap(bounds.player, tapriBounds);
+      if (tapri.collidable !== false && !tapri.netaBypass && tapriIsWithinCollisionApproach && horizontalOverlap(bounds.player, tapriBounds)) {
+        hitTapriObject = tapri;
+        return true;
+      }
+
+      return false;
     });
-    const hitCrossingObstacle = visibleBounds.crossingObstacle && rectanglesOverlap(visibleBounds.player, visibleBounds.crossingObstacle);
+    const hitCrossingObstacle = visibleBounds.crossingObstacle &&
+      state.crossingObstacle &&
+      state.crossingObstacle.collidable !== false &&
+      !state.crossingObstacle.netaBypass &&
+      rectanglesOverlap(visibleBounds.player, visibleBounds.crossingObstacle);
 
     if (hitCrossingObstacle && state.crossingObstacle && state.crossingObstacle.type === "human") {
       if (currentHumanTierRule().lethal) {
-        showGameOver();
+        resolveLethalImpact(state.crossingObstacle, "crossing");
       } else {
         resolveNonLethalHumanCollision();
       }
@@ -2062,22 +2565,24 @@
     }
 
     if (hitCrossingObstacle && state.crossingObstacle && state.crossingObstacle.type === "cow") {
-      showGameOver();
+      resolveLethalImpact(state.crossingObstacle, "crossing");
       return;
     }
 
     if (hitTapri) {
-      showGameOver();
+      resolveLethalImpact(hitTapriObject, "tapri");
       return;
     }
 
     if (hitStandingCow) {
-      showGameOver();
+      resolveLethalImpact(hitStandingCowObject, "standingCow");
       return;
     }
 
-    if (hitTraffic || hitDirtTraffic) {
-      showGameOver();
+    if (hitTraffic) {
+      resolveLethalImpact(hitTrafficObject, "traffic");
+    } else if (hitDirtTraffic) {
+      resolveLethalImpact(hitDirtTrafficObject, "dirtTraffic");
     }
   }
 
@@ -2114,6 +2619,8 @@
   function update(deltaSeconds) {
     const input = window.RacingInput;
     const restartIsDown = input.restart();
+
+    updateCheatTimers(deltaSeconds);
 
     if (input.consumeMuteToggle && input.consumeMuteToggle()) {
       unlockAudio();

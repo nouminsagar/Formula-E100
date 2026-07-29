@@ -171,6 +171,18 @@ body {
   letter-spacing: 1px;
 }
 
+.cheat-confirm,
+.cheat-status {
+  min-height: 20px;
+  color: #f0c86a;
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+
+.cheat-status {
+  color: #f7f3e8;
+}
+
 .instructions-screen {
   padding: 18px;
   align-content: center;
